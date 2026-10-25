@@ -11,6 +11,19 @@ Scenario A of the Keyloop assessment: a .NET 10 backend that quotes a vehicle se
 - Durable notification outbox, inbox, mock delivery provider, competing workers, leases, retry/backoff, failed-delivery inspection/retry, and suppression of unsent confirmations after cancellation.
 - PostgreSQL integration tests across two API hosts, structured logs, activities/meters, health endpoints, and an isolated load runner.
 
+## Clean Architecture and domain model
+
+The backend has four production projects with enforced dependency boundaries:
+
+| Project | Responsibility |
+| --- | --- |
+| `Scheduler.Domain` | `ServiceAppointment` aggregate, owned `WorkExecution` entity, `BookingOffer`, validated `ServiceInterval`/`Money`/`ServiceEstimate` value objects, overrun policy, and typed domain events. No framework, persistence, or other project dependencies. |
+| `Scheduler.Application` | Booking/operations/notification use cases, authorization, contracts, and interfaces for persistence, delivery, and reference reads. Depends on Domain. |
+| `Scheduler.Infrastructure` | PostgreSQL repositories and transaction implementation, SQL migrations, outbox/delivery storage, mock provider, and background host adapter. Implements Application interfaces. |
+| `Scheduler.Api` | HTTP endpoints, input serialization, Problem Details mapping, demo identity, and dependency injection composition. |
+
+Lifecycle changes go through aggregate methods rather than writable entity properties or SQL decisions. Domain events are converted into outbox rows in the same transaction as the business change. Resource allocation still uses shared database locks and exclusion constraints because conflicts span appointments and API instances. Immutable persistence snapshots and HTTP DTOs are separate from the behavior-owning aggregate. See the [architecture and DDD guide](docs/architecture.md).
+
 Support staffing, customer reschedule proposals, automatic recovery, reminders, real email/SMS, native mobile, online payment, and production authentication are **design extensions**, not implemented endpoints. Staff judge whether more people would shorten work. This application records forecasts; it does not predict productivity. Production HA infrastructure is documented, not provisioned.
 
 ## Run locally
@@ -61,7 +74,13 @@ dotnet test -c Release
 
 Database tests fail with setup instructions if this variable is missing; they are not silently skipped. The suite verifies real PostgreSQL semantics, including bay-only and technician-only conflicts, independent API instances, last-slot races, same-quote replay, atomic rollback when outbox insertion fails, cancellation/start races, both booking/forecast commit orders, actual overruns, expired worker claims, and provider recovery. See [validation results](docs/validation.md) for the recorded run.
 
-Tests follow **Given–When–Then** scenarios using xUnit and Fluent Assertions 7.2.0. Names describe the precondition, business action, and expected outcome. Each test separates those phases explicitly; related outcomes use `AssertionScope`, and scenario outlines use theories. The suite currently has **51 passing examples**, including isolated rule tests and PostgreSQL API integration scenarios. See the [testing convention](docs/testing.md) before adding tests.
+Tests follow **Given–When–Then** scenarios using xUnit and Fluent Assertions 7.2.0. Names describe the precondition, business action, and expected outcome. Each test separates those phases explicitly; related outcomes use `AssertionScope`, and scenario outlines use theories. The suite currently has **74 passing examples**: 24 domain/rule examples, four architecture checks, and 46 PostgreSQL API/migration scenarios. See the [testing convention](docs/testing.md) before adding tests.
+
+Domain and architecture tests run without a database connection:
+
+```powershell
+dotnet test --filter 'FullyQualifiedName~DomainScenarios|FullyQualifiedName~RulesTests|FullyQualifiedName~ArchitectureScenarios'
+```
 
 ## Performance
 
@@ -95,5 +114,7 @@ AI translated those decisions into explicit invariants, a schema and API, Postgr
 Verification used actual compilation and PostgreSQL tests rather than an in-memory substitute. NuGet restore rejected a vulnerable transitive OpenAPI version; the dependency was upgraded to the patched 2.7.5 release. A deliberately injected outbox constraint failure verified rollback of the appointment and both reservations. Tests use separate application hosts for booking races and worker competition. Recorded performance evidence is kept separate from targets and production claims.
 
 During implementation review, the applicant requested BDD-style tests and Fluent Assertions. AI reorganized the suite into focused Given–When–Then scenarios, split combined behaviors into independent examples, and preserved the real PostgreSQL race/failure checks. All 51 resulting examples passed. The increase from 31 primarily reflects clearer scenario boundaries, not a claim of twenty entirely new business requirements.
+
+The applicant then challenged the lack of Clean Architecture and DDD. AI separated four production projects, moved lifecycle behavior into the appointment aggregate and its execution entity, introduced value objects and typed domain events, and implemented application-owned persistence interfaces in Infrastructure. The original 51 scenarios still pass, with 23 additional domain, architecture, and migration checks. Dependency tests prevent inward layers from importing HTTP or database adapters. Migration resource identities were deliberately retained to avoid rerunning the schema on existing databases. A new architecture-test assertion initially failed compilation because expression trees do not support its pattern syntax; the assertion was corrected before the full suite passed.
 
 The applicant still needs to review and explain the code and tradeoffs, run the demonstration, and record their own assessment video. This narrative records actual collaboration and verification; it does not claim the applicant has already reviewed every generated implementation detail. Design-phase collaboration is separately covered in [system design](docs/system-design.md).

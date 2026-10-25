@@ -1,5 +1,8 @@
 <Solution>
   <Project Path="src/Scheduler.Api/Scheduler.Api.csproj" />
+  <Project Path="src/Scheduler.Domain/Scheduler.Domain.csproj" />
+  <Project Path="src/Scheduler.Application/Scheduler.Application.csproj" />
+  <Project Path="src/Scheduler.Infrastructure/Scheduler.Infrastructure.csproj" />
   <Project Path="tests/Scheduler.Tests/Scheduler.Tests.csproj" />
   <Project Path="tools/Scheduler.Load/Scheduler.Load.csproj" />
 </Solution>

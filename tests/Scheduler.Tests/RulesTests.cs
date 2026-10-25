@@ -1,5 +1,5 @@
 using FluentAssertions;
-using Scheduler.Api;
+using Scheduler.Domain;
 using Xunit;
 
 namespace Scheduler.Tests;

@@ -5,7 +5,8 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Npgsql;
-using Scheduler.Api;
+using Scheduler.Application;
+using Scheduler.Infrastructure;
 using Xunit;
 
 namespace Scheduler.Tests;
@@ -24,7 +25,7 @@ public sealed class TestProvider : IDeliveryProvider
     public bool Fail { get; set; }
     public Task Send(Guid id, CancellationToken ct)
     {
-        if (Fail) throw new HttpRequestException("Test outage");
+        if (Fail) throw new DeliveryUnavailableException();
         return Task.CompletedTask;
     }
 }

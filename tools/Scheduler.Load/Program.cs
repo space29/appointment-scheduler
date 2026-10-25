@@ -6,7 +6,8 @@ using System.Net.Sockets;
 using System.Text.Json;
 using Dapper;
 using Npgsql;
-using Scheduler.Api;
+using Scheduler.Application;
+using Scheduler.Infrastructure;
 
 namespace Scheduler.Load;
 

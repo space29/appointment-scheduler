@@ -3,7 +3,7 @@ using System.Net.Http.Json;
 using FluentAssertions;
 using FluentAssertions.Execution;
 using Npgsql;
-using Scheduler.Api;
+using Scheduler.Application;
 using Xunit;
 
 namespace Scheduler.Tests;

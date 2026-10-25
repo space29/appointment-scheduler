@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="../Scheduler.Application/Scheduler.Application.csproj" />
+    <PackageReference Include="Npgsql" Version="10.0.0" />
+    <PackageReference Include="Dapper" Version="2.1.66" />
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <!-- Keep migration identities stable for databases created before the project split. -->
+    <EmbeddedResource Include="Database/*.sql" LogicalName="Scheduler.Api.Database.%(Filename)%(Extension)" />
+  </ItemGroup>
+</Project>

@@ -6,8 +6,10 @@ Date: 25 October 2026 (Asia/Saigon). These observations apply to this implementa
 
 | Check | Result |
 | --- | --- |
-| Release build, all three projects | Passed, zero warnings and errors |
-| Automated tests | 51 passed, zero failed after the BDD refactor; Given–When–Then scenarios with Fluent Assertions, including PostgreSQL-backed API tests and interval/rounding unit cases |
+| Release build, all six projects | Passed, zero warnings and errors after the Clean Architecture/DDD refactor |
+| Automated tests | 74 passed, zero failed: 24 domain/rule examples, four dependency/mutation-boundary checks, and 46 PostgreSQL integration scenarios |
+| Tests without a database | All 28 domain/rule/architecture examples passed independently |
+| Migration compatibility | Original migration identifiers retained; repeated Infrastructure migrations preserve existing booking data |
 | Concurrent API hosts | Verified final-slot exclusion, alternative allocation, and same-quote replay using independent host/connection pools |
 | Atomic failure injection | A deliberately rejected outbox insert rolled back appointment and both reservations |
 | Operations | Verified cancellation/start race, both booking/forecast commit orders, downstream impact without moving B, stale forecasts, and actual completion with insufficient remaining capacity for B |
@@ -18,9 +20,25 @@ Date: 25 October 2026 (Asia/Saigon). These observations apply to this implementa
 
 The rollback test deliberately emits a classified error log for PostgreSQL state 23514. That is the expected failure injection, not a failed test. The test and load databases are isolated, uniquely named, and removed by their runners. The application demonstration database remains available locally.
 
-BDD refactor verification: `dotnet test tests/Scheduler.Tests/Scheduler.Tests.csproj -c Release --no-restore` rebuilt the API/test projects and passed all 51 examples, with no skipped tests. The previous 31-case suite was reorganized and combined behaviors split into focused scenarios; the application code and recorded performance workload were unchanged. The new test run used .NET runtime 10.0.13. The runtime/version measurements below remain those of the earlier performance run.
+BDD refactor verification originally passed 51 examples after splitting combined behaviors from the prior 31-case suite. At that stage application behavior and the recorded performance workload were unchanged. The subsequent Clean Architecture/DDD refactor added 23 domain, architecture, and migration checks. `dotnet test tests/Scheduler.Tests/Scheduler.Tests.csproj -c Release --no-restore` passed all 74 examples with none skipped on .NET runtime 10.0.13. The original integration scenarios continue to pass through the same HTTP contracts.
 
-## Short capacity run
+## Post-architecture-refactor short capacity run
+
+The same 60-second workload, after five seconds of warm-up, was rerun against two freshly started Kestrel processes with the four-layer implementation. The same local dataset and traffic mix described below were used. Runtime was .NET 10.0.13 with twelve logical processors. Domain/project separation did not require an API or database-schema change.
+
+| Measurement | Result |
+| --- | --- |
+| Successful reads / distinct new bookings | 60,000 / 1,020 |
+| Failed read or booking requests / dropped arrivals | 0 / 0 |
+| Elapsed including response drain | 60.0052 seconds |
+| Read / booking throughput including drain | 999.91/s / 16.999/s |
+| Confirmation p50 / p95 / p99 | 6.25 / 8.97 / 14.18 ms |
+| Persisted overlapping reservations | 0 |
+| Notification backlog at final sample | 2 pending/processing items |
+
+All scheduled target arrivals completed. See [post-refactor raw result](performance/clean-architecture-60s.json). This remains a short synthetic local run, with no production load balancer, HA/failover exercise, or sustained queue-stability proof.
+
+## Initial short capacity run, before the architecture refactor
 
 Environment: Windows, .NET runtime 10.0.10 / SDK 10.0.302, PostgreSQL 18.6, twelve logical processors. Load generator, database, and two Kestrel processes share the workstation. Each API has a maximum connection pool of twenty. The runner uses loopback HTTP and distributes requests between ports; no load balancer, cross-zone network, production authentication, or external provider is involved. CPU/memory/I/O time series were not captured, so this run does not establish a production sizing recommendation.
 

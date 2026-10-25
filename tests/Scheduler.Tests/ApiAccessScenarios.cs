@@ -2,7 +2,8 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text;
 using FluentAssertions;
-using Scheduler.Api;
+using Scheduler.Application;
+using Scheduler.Infrastructure;
 using Xunit;
 
 namespace Scheduler.Tests;

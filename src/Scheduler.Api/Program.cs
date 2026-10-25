@@ -1,26 +1,18 @@
 using System.Diagnostics;
-using Dapper;
-using Npgsql;
 using Scheduler.Api;
+using Scheduler.Application;
+using Scheduler.Domain;
+using Scheduler.Infrastructure;
 
-DefaultTypeMap.MatchNamesWithUnderscores = true;
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddOpenApi();
 builder.Services.ConfigureHttpJsonOptions(o => o.SerializerOptions.Converters.Add(new ExplicitOffsetConverter()));
 builder.Services.AddProblemDetails();
 builder.Services.AddSingleton(TimeProvider.System);
-builder.Services.AddSingleton(sp =>
-{
-    var connection = sp.GetRequiredService<IConfiguration>().GetConnectionString("Scheduler")
-        ?? throw new InvalidOperationException("Set ConnectionStrings__Scheduler or a .NET user secret. Never commit credentials.");
-    return NpgsqlDataSource.Create(connection);
-});
-builder.Services.AddSingleton<Database>();
+builder.Services.AddSchedulerInfrastructure(builder.Configuration);
 builder.Services.AddScoped<BookingService>();
 builder.Services.AddScoped<OperationsService>();
-builder.Services.AddSingleton<IDeliveryProvider, MockDeliveryProvider>();
 builder.Services.AddSingleton<NotificationDispatcher>();
-builder.Services.AddHostedService<NotificationWorker>();
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped(sp => (Actor)sp.GetRequiredService<IHttpContextAccessor>().HttpContext!.Items["Actor"]!);
 var app = builder.Build();
@@ -41,7 +33,17 @@ app.Use(async (context, next) =>
     try { await next(context); }
     catch (DomainError error)
     {
-        await Results.Problem(statusCode: error.Status, title: error.Code, detail: error.Message,
+        await Results.Problem(statusCode: error.Kind == RuleFailure.Validation ? 400 : 409, title: error.Code, detail: error.Message,
+            extensions: new Dictionary<string, object?> { ["code"] = error.Code, ["traceId"] = context.TraceIdentifier }).ExecuteAsync(context);
+    }
+    catch (RequestFailure error)
+    {
+        var status = error.Kind switch
+        {
+            FailureType.Validation => 400, FailureType.Conflict => 409, FailureType.NotFound => 404,
+            FailureType.Forbidden => 403, FailureType.Unauthenticated => 401, _ => 500
+        };
+        await Results.Problem(statusCode: status, title: error.Code, detail: error.Message,
             extensions: new Dictionary<string, object?> { ["code"] = error.Code, ["traceId"] = context.TraceIdentifier }).ExecuteAsync(context);
     }
     catch (BadHttpRequestException)
@@ -52,8 +54,8 @@ app.Use(async (context, next) =>
     catch (Exception ex)
     {
         // SQL details may contain business data. Log a bounded classification, never connection strings or bodies.
-        app.Logger.LogError("Request {TraceId} failed: {ErrorType}, database state {SqlState}", context.TraceIdentifier, ex.GetType().Name, (ex as PostgresException)?.SqlState);
-        var unavailable = ex is NpgsqlException or TimeoutException;
+        app.Logger.LogError("Request {TraceId} failed: {ErrorType}, persistence code {Code}", context.TraceIdentifier, ex.GetType().Name, (ex as PersistenceFailure)?.Code);
+        var unavailable = ex is PersistenceFailure or TimeoutException;
         await Results.Problem(statusCode: unavailable ? 503 : 500, title: unavailable ? "SERVICE_UNAVAILABLE" : "UNEXPECTED_ERROR",
             detail: "The request could not be completed. For booking, retry with the same quote identifier.",
             extensions: new Dictionary<string, object?> { ["traceId"] = context.TraceIdentifier }).ExecuteAsync(context);
@@ -75,34 +77,22 @@ app.Use(async (context, next) =>
     {
         "customer-a" => new(DemoIds.CustomerA, false),
         "customer-b" => new(DemoIds.CustomerB, false),
-        "staff" => new(DemoIds.Staff, true),
+        "staff" => new(DemoIds.Staff, true, DemoIds.Dealership),
         _ => null
     };
-    if (actor == null) throw new DomainError(401, "DEMO_IDENTITY_REQUIRED", "Set X-Demo-Actor to customer-a, customer-b, or staff for the local demonstration.");
+    if (actor == null) throw new RequestFailure(FailureType.Unauthenticated, "DEMO_IDENTITY_REQUIRED", "Set X-Demo-Actor to customer-a, customer-b, or staff for the local demonstration.");
     context.Items["Actor"] = actor;
     await next(context);
 });
 
 app.MapOpenApi();
 app.MapGet("/health/live", () => Results.Ok(new { status = "Alive" }));
-app.MapGet("/health/ready", async (Database db, CancellationToken ct) =>
+app.MapGet("/health/ready", async (IReferenceDataReader data, CancellationToken ct) =>
 {
-    await using var s = await db.Open(ct);
-    await s.Scalar<int>("SELECT count(*)::int FROM schema_migration");
+    await data.IsReady(ct);
     return Results.Ok(new { status = "Ready" });
 });
-app.MapGet("/reference-data", async (Database db, Actor actor, CancellationToken ct) =>
-{
-    await using var s = await db.Open(ct);
-    return Results.Ok(new
-    {
-        customers = await s.Many<dynamic>("SELECT id,name FROM customer WHERE @staff OR id=@id", new { staff = actor.IsStaff, actor.Id }),
-        vehicles = await s.Many<dynamic>("SELECT * FROM vehicle WHERE @staff OR customer_id=@id", new { staff = actor.IsStaff, actor.Id }),
-        dealerships = await s.Many<dynamic>("SELECT * FROM dealership"),
-        services = await s.Many<dynamic>("SELECT * FROM service_type"),
-        paymentOptions = new[] { "PayAtCheckIn" }, bookingChannel = "Web"
-    });
-});
+app.MapGet("/reference-data", async (IReferenceDataReader data, Actor actor, CancellationToken ct) => Results.Ok(await data.Read(actor, ct)));
 app.MapPost("/appointment-quotes", async (QuoteRequest body, Actor actor, BookingService svc, CancellationToken ct) =>
     Results.Ok(await svc.Quote(body, actor, ct))).Produces<Quote>();
 app.MapPost("/appointments", async (BookingRequest body, Actor actor, BookingService svc, CancellationToken ct) =>

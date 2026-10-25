@@ -1,6 +1,6 @@
 # Pair review and submission checklist
 
-1. Trace a quote into `BookingService.Book`, the resource lock query, and `reservation_no_overlap`. Explain why a normal read-then-insert or process-local lock is insufficient across instances.
+1. Trace API -> Application use case -> `ServiceAppointment` domain behavior -> Infrastructure repository. Explain the dependency direction, aggregate boundary, immutable snapshots, and typed events. Then trace `BookingService.Book`, the resource lock implementation, and `reservation_no_overlap`; explain why a normal read-then-insert or process-local lock is insufficient across instances.
 2. Walk through independent quotes racing for the final pair and the same quote racing twice. Explain 201 versus replay 200 and how to recover when the response is lost after commit.
 3. Review price/duration snapshots, local-time pricing boundaries, PayAtCheckIn, and why no payment is marked collected.
 4. Review cancellation/start serialization and the injected-outbox-failure test. Confirm that cancellation releases only the intended reservation rows.
