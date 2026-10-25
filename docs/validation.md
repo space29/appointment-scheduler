@@ -7,7 +7,7 @@ Date: 25 October 2026 (Asia/Saigon). These observations apply to this implementa
 | Check | Result |
 | --- | --- |
 | Release build, all three projects | Passed, zero warnings and errors |
-| Automated tests | 31 passed, zero failed; PostgreSQL-backed API tests plus interval/rounding unit cases |
+| Automated tests | 51 passed, zero failed after the BDD refactor; Given–When–Then scenarios with Fluent Assertions, including PostgreSQL-backed API tests and interval/rounding unit cases |
 | Concurrent API hosts | Verified final-slot exclusion, alternative allocation, and same-quote replay using independent host/connection pools |
 | Atomic failure injection | A deliberately rejected outbox insert rolled back appointment and both reservations |
 | Operations | Verified cancellation/start race, both booking/forecast commit orders, downstream impact without moving B, stale forecasts, and actual completion with insufficient remaining capacity for B |
@@ -17,6 +17,8 @@ Date: 25 October 2026 (Asia/Saigon). These observations apply to this implementa
 | NuGet vulnerability check | No known vulnerable direct/transitive API packages reported by configured sources at check time |
 
 The rollback test deliberately emits a classified error log for PostgreSQL state 23514. That is the expected failure injection, not a failed test. The test and load databases are isolated, uniquely named, and removed by their runners. The application demonstration database remains available locally.
+
+BDD refactor verification: `dotnet test tests/Scheduler.Tests/Scheduler.Tests.csproj -c Release --no-restore` rebuilt the API/test projects and passed all 51 examples, with no skipped tests. The previous 31-case suite was reorganized and combined behaviors split into focused scenarios; the application code and recorded performance workload were unchanged. The new test run used .NET runtime 10.0.13. The runtime/version measurements below remain those of the earlier performance run.
 
 ## Short capacity run
 

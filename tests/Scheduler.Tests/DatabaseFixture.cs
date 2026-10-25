@@ -88,6 +88,7 @@ public sealed class DatabaseFixture : IAsyncLifetime
             job_execution,resource_reservation,appointment,appointment_quote;
             UPDATE price_policy SET base_price=100,version=1;
             UPDATE duration_rule SET estimated_minutes=CASE category WHEN 'Large' THEN 75 ELSE 60 END,buffer_minutes=10,version=1;
+            UPDATE vehicle SET category='Large' WHERE id='20000000-0000-0000-0000-000000000002';
             DELETE FROM qualification;
             INSERT INTO qualification SELECT id,'40000000-0000-0000-0000-000000000001' FROM resource WHERE name LIKE 'Qualified%';
             DELETE FROM availability;

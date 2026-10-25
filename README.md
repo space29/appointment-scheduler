@@ -61,6 +61,8 @@ dotnet test -c Release
 
 Database tests fail with setup instructions if this variable is missing; they are not silently skipped. The suite verifies real PostgreSQL semantics, including bay-only and technician-only conflicts, independent API instances, last-slot races, same-quote replay, atomic rollback when outbox insertion fails, cancellation/start races, both booking/forecast commit orders, actual overruns, expired worker claims, and provider recovery. See [validation results](docs/validation.md) for the recorded run.
 
+Tests follow **Given–When–Then** scenarios using xUnit and Fluent Assertions 7.2.0. Names describe the precondition, business action, and expected outcome. Each test separates those phases explicitly; related outcomes use `AssertionScope`, and scenario outlines use theories. The suite currently has **51 passing examples**, including isolated rule tests and PostgreSQL API integration scenarios. See the [testing convention](docs/testing.md) before adding tests.
+
 ## Performance
 
 The applicant's targets are **1,000 reads/s concurrently with 17 new booking commits/s**, with proposed booking confirmation p95 <= 2 seconds and p99 <= 3 seconds. Quotes and notifications add writes. Monthly availability target: >=99.9%. These are requirements, not guarantees based on architecture alone.
@@ -91,5 +93,7 @@ The applicant chose Scenario A, .NET, PostgreSQL, and a five-day backend scope. 
 AI translated those decisions into explicit invariants, a schema and API, PostgreSQL locking/constraints, and implementation/tests. The implementation uses Npgsql/Dapper and embedded SQL migrations instead of the draft's EF Core proposal so the resource locks and PostgreSQL range constraints are directly inspectable. This tradeoff reduces ORM machinery but leaves more SQL and mapping maintenance with the application.
 
 Verification used actual compilation and PostgreSQL tests rather than an in-memory substitute. NuGet restore rejected a vulnerable transitive OpenAPI version; the dependency was upgraded to the patched 2.7.5 release. A deliberately injected outbox constraint failure verified rollback of the appointment and both reservations. Tests use separate application hosts for booking races and worker competition. Recorded performance evidence is kept separate from targets and production claims.
+
+During implementation review, the applicant requested BDD-style tests and Fluent Assertions. AI reorganized the suite into focused Given–When–Then scenarios, split combined behaviors into independent examples, and preserved the real PostgreSQL race/failure checks. All 51 resulting examples passed. The increase from 31 primarily reflects clearer scenario boundaries, not a claim of twenty entirely new business requirements.
 
 The applicant still needs to review and explain the code and tradeoffs, run the demonstration, and record their own assessment video. This narrative records actual collaboration and verification; it does not claim the applicant has already reviewed every generated implementation detail. Design-phase collaboration is separately covered in [system design](docs/system-design.md).
