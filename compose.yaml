@@ -1,0 +1,39 @@
+services:
+  db:
+    image: postgres:18
+    environment:
+      POSTGRES_DB: appointment_scheduler
+      POSTGRES_USER: scheduler
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set a local demo database password}
+    ports:
+      - "127.0.0.1:5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U scheduler -d appointment_scheduler"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+  migrate:
+    build: .
+    image: scheduler-api:local
+    environment:
+      ConnectionStrings__Scheduler: Host=db;Database=appointment_scheduler;Username=scheduler;Password=${POSTGRES_PASSWORD};Maximum Pool Size=20
+    command: ["--migrate", "--seed"]
+    depends_on:
+      db:
+        condition: service_healthy
+  api:
+    build: .
+    image: scheduler-api:local
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_URLS: http://+:8080
+      ConnectionStrings__Scheduler: Host=db;Database=appointment_scheduler;Username=scheduler;Password=${POSTGRES_PASSWORD};Maximum Pool Size=20
+    ports:
+      - "127.0.0.1:5080:8080"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+volumes:
+  pgdata:
