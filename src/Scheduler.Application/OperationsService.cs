@@ -8,6 +8,7 @@ public sealed class OperationsService(ISchedulingStore store, TimeProvider clock
 
     public async Task<AppointmentView> Start(Guid id, ChangeRequest request, Actor actor, CancellationToken ct)
     {
+        using var activity = Telemetry.Activities.StartActivity("appointment.start");
         actor.RequireStaff();
         await using var s = await store.Open(ct);
         await s.Begin();
@@ -24,6 +25,7 @@ public sealed class OperationsService(ISchedulingStore store, TimeProvider clock
 
     public async Task<AppointmentView> Progress(Guid id, ProgressRequest request, Actor actor, CancellationToken ct)
     {
+        using var activity = Telemetry.Activities.StartActivity("appointment.progress");
         actor.RequireStaff();
         await using var s = await store.Open(ct);
         await s.Begin();
@@ -41,6 +43,7 @@ public sealed class OperationsService(ISchedulingStore store, TimeProvider clock
 
     public async Task<AppointmentView> Complete(Guid id, ChangeRequest request, Actor actor, CancellationToken ct)
     {
+        using var activity = Telemetry.Activities.StartActivity("appointment.complete");
         actor.RequireStaff();
         await using var s = await store.Open(ct);
         await s.Begin();

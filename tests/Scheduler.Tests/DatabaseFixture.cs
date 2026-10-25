@@ -39,6 +39,7 @@ public sealed class ApiFactory(string connection, TestClock clock, TestProvider 
         {
             ["ConnectionStrings:Scheduler"] = connection,
             ["Notifications:Enabled"] = "false",
+            ["Observability:OperationalPolling"] = "false",
             ["Logging:LogLevel:Default"] = "Warning"
         }));
         builder.ConfigureServices(services =>

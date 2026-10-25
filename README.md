@@ -9,7 +9,8 @@ Scenario A of the Keyloop assessment: a .NET 10 backend that quotes a vehicle se
 - Customer-owned reads and cancellation before work starts. Cancellation releases planned capacity, preserves history, and emits notifications.
 - Staff start/progress/completion commands, actual occupancy, downstream overrun incidents, stale-forecast protection, and revision checks. No customer appointment is silently moved.
 - Durable notification outbox, inbox, mock delivery provider, competing workers, leases, retry/backoff, failed-delivery inspection/retry, and suppression of unsent confirmations after cancellation.
-- PostgreSQL integration tests across two API hosts, structured logs, activities/meters, health endpoints, and an isolated load runner.
+- PostgreSQL integration tests across two API hosts, correlated JSON logs, OpenTelemetry export, Prometheus metrics, health endpoints, and an isolated load runner.
+- Booking-to-notification traces across the durable outbox, database timing, operational gauges, and optional local Aspire/Prometheus viewing with alert rules.
 
 ## Clean Architecture and domain model
 
@@ -63,6 +64,12 @@ docker compose up --build
 
 The API is on localhost:5080 and PostgreSQL on localhost:5433. A one-off migration service runs before the API; the named volume persists data. This Compose configuration has not been exercised in the current workstation environment because Docker is unavailable.
 
+## Observe the application
+
+JSON console logs and `GET /metrics` are enabled by default. Responses expose `X-Trace-Id`; use it to correlate request, booking, database, and asynchronous notification activity. Set `Observability__ConsoleTracing=true` for local span output, or `Observability__OtlpEndpoint=http://127.0.0.1:4318` for OTLP/HTTP export of logs, metrics, and traces. Run migrations before starting the updated API so existing outbox rows receive the nullable trace-context columns.
+
+With Docker available, `docker compose -f compose.yaml -f compose.observability.yaml up --build` adds Aspire at localhost:18888 and Prometheus at localhost:9090. The containers have not been exercised on this workstation; actual three-signal export is verified with a local HTTP receiver in the tests. See the [observability walkthrough, metrics, and limits](docs/observability.md).
+
 ## Test
 
 Tests create and remove their own uniquely named `scheduler_test_<GUID>` database. Set an administration connection with CREATEDB and extension permissions; never point tests at a production server.
@@ -74,7 +81,7 @@ dotnet test -c Release
 
 Database tests fail with setup instructions if this variable is missing; they are not silently skipped. The suite verifies real PostgreSQL semantics, including bay-only and technician-only conflicts, independent API instances, last-slot races, same-quote replay, atomic rollback when outbox insertion fails, cancellation/start races, both booking/forecast commit orders, actual overruns, expired worker claims, and provider recovery. See [validation results](docs/validation.md) for the recorded run.
 
-Tests follow **Given–When–Then** scenarios using xUnit and Fluent Assertions 7.2.0. Names describe the precondition, business action, and expected outcome. Each test separates those phases explicitly; related outcomes use `AssertionScope`, and scenario outlines use theories. The suite currently has **74 passing examples**: 24 domain/rule examples, four architecture checks, and 46 PostgreSQL API/migration scenarios. See the [testing convention](docs/testing.md) before adding tests.
+Tests follow **Given–When–Then** scenarios using xUnit and Fluent Assertions 7.2.0. Names describe the precondition, business action, and expected outcome. Each test separates those phases explicitly; related outcomes use `AssertionScope`, and scenario outlines use theories. The suite currently has **80 passing examples**: 24 domain/rule examples, four architecture checks, and 52 PostgreSQL/API/observability scenarios. See the [testing convention](docs/testing.md) before adding tests.
 
 Domain and architecture tests run without a database connection:
 
@@ -116,5 +123,7 @@ Verification used actual compilation and PostgreSQL tests rather than an in-memo
 During implementation review, the applicant requested BDD-style tests and Fluent Assertions. AI reorganized the suite into focused Given–When–Then scenarios, split combined behaviors into independent examples, and preserved the real PostgreSQL race/failure checks. All 51 resulting examples passed. The increase from 31 primarily reflects clearer scenario boundaries, not a claim of twenty entirely new business requirements.
 
 The applicant then challenged the lack of Clean Architecture and DDD. AI separated four production projects, moved lifecycle behavior into the appointment aggregate and its execution entity, introduced value objects and typed domain events, and implemented application-owned persistence interfaces in Infrastructure. The original 51 scenarios still pass, with 23 additional domain, architecture, and migration checks. Dependency tests prevent inward layers from importing HTTP or database adapters. Migration resource identities were deliberately retained to avoid rerunning the schema on existing databases. A new architecture-test assertion initially failed compilation because expression trees do not support its pattern syntax; the assertion was corrected before the full suite passed.
+
+The applicant then identified that logs, activities, and meters alone did not complete observability. AI added the SDK/exporters, JSON correlation, metrics scraping, persisted asynchronous trace context, database spans, operational snapshots, and optional local viewers. Six BDD scenarios verified actual three-signal HTTP export, cross-worker parentage, retries, stale forecasts, legacy events, collector failure isolation, and sampling. The tests caught late collector configuration in the test host and a mistaken assumption that the Prometheus pull reader could be force-flushed; both were corrected before all 80 examples passed. Docker viewing remains unexecuted locally, and performance evidence explicitly separates instrumentation from attached-collector throughput.
 
 The applicant still needs to review and explain the code and tradeoffs, run the demonstration, and record their own assessment video. This narrative records actual collaboration and verification; it does not claim the applicant has already reviewed every generated implementation detail. Design-phase collaboration is separately covered in [system design](docs/system-design.md).

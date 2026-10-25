@@ -22,6 +22,8 @@ public static class Hosting
         services.AddSingleton<IStaffDirectory, DemoStaffDirectory>();
         services.AddSingleton<IDeliveryProvider, MockDeliveryProvider>();
         services.AddHostedService<NotificationWorker>();
+        services.AddSingleton<OperationalMetrics>();
+        services.AddHostedService(sp => sp.GetRequiredService<OperationalMetrics>());
         return services;
     }
 }

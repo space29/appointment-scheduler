@@ -154,10 +154,11 @@ internal sealed class PostgresSchedulingSession(Session s) : ISchedulingSession
             };
             var payload = JsonSerializer.Serialize(new { appointmentId = a.Id, a.StartsAt, a.EndsAt, a.Total, a.Currency, a.PaymentTiming, a.Status, details });
             await s.Exec("""
-                INSERT INTO outbox_message(id,appointment_id,event_type,revision,recipients,payload,created_at)
-                VALUES(@id,@appointmentId,@type,@revision,@recipients,CAST(@payload AS jsonb),@now)
+                INSERT INTO outbox_message(id,appointment_id,event_type,revision,recipients,payload,created_at,trace_parent,trace_state)
+                VALUES(@id,@appointmentId,@type,@revision,@recipients,CAST(@payload AS jsonb),@now,@traceParent,@traceState)
                 ON CONFLICT(appointment_id,event_type,revision) DO NOTHING
-                """, new { id = Guid.NewGuid(), appointmentId = a.Id, type = e.GetType().Name, revision = a.Revision, recipients = entry.Recipients, payload, now = e.OccurredAt });
+                """, new { id = Guid.NewGuid(), appointmentId = a.Id, type = e.GetType().Name, revision = a.Revision, recipients = entry.Recipients, payload, now = e.OccurredAt,
+                    traceParent = System.Diagnostics.Activity.Current?.Id, traceState = System.Diagnostics.Activity.Current?.TraceStateString });
         }
     }
 }

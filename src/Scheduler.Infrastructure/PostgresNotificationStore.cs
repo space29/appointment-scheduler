@@ -32,18 +32,18 @@ public sealed class PostgresNotificationStore(Database database) : INotification
             ORDER BY next_attempt_at,id LIMIT 1 FOR UPDATE SKIP LOCKED
             """, new { now });
         if (delivery == null) { await s.Commit(); return null; }
-        var obsolete = await s.Scalar<bool>("""
-            SELECT a.status='Cancelled' AND o.event_type='AppointmentConfirmed'
+        var context = (await s.One<EventContext>("""
+            SELECT (a.status='Cancelled' AND o.event_type='AppointmentConfirmed') obsolete, o.trace_parent, o.trace_state
             FROM outbox_message o JOIN appointment a ON a.id=o.appointment_id WHERE o.id=@id
-            """, new { id = delivery.EventId });
+            """, new { id = delivery.EventId }))!;
         var token = Guid.NewGuid();
-        if (obsolete)
+        if (context.Obsolete)
             await s.Exec("UPDATE notification_delivery SET status='Suppressed',lease_token=NULL,lease_until=NULL WHERE id=@id", new { delivery.Id });
         else
             await s.Exec("UPDATE notification_delivery SET status='Processing',attempts=attempts+1,lease_token=@token,lease_until=@until WHERE id=@id",
                 new { delivery.Id, token, until = now.AddSeconds(30) });
         await s.Commit();
-        return new(delivery.Id, token, delivery.Attempts, obsolete);
+        return new(delivery.Id, token, delivery.Attempts, context.Obsolete, context.TraceParent, context.TraceState);
     }
     public async Task Acknowledge(DeliveryClaim claim, string status, string? error, DateTime next, CancellationToken ct)
     {
@@ -87,5 +87,11 @@ public sealed class PostgresNotificationStore(Database database) : INotification
     {
         await using var s = await database.Open(ct);
         return await s.Exec("UPDATE notification_delivery SET status='Pending',attempts=0,next_attempt_at=@now WHERE id=@id AND status='Failed'", new { id, now }) != 0;
+    }
+    private sealed class EventContext
+    {
+        public bool Obsolete { get; set; }
+        public string? TraceParent { get; set; }
+        public string? TraceState { get; set; }
     }
 }

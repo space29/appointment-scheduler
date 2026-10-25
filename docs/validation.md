@@ -6,21 +6,40 @@ Date: 25 October 2026 (Asia/Saigon). These observations apply to this implementa
 
 | Check | Result |
 | --- | --- |
-| Release build, all six projects | Passed, zero warnings and errors after the Clean Architecture/DDD refactor |
-| Automated tests | 74 passed, zero failed: 24 domain/rule examples, four dependency/mutation-boundary checks, and 46 PostgreSQL integration scenarios |
+| Release build, all six projects | Passed, zero warnings and errors after the observability implementation |
+| Automated tests | 80 passed, zero failed/skipped: 24 domain/rule examples, four dependency/mutation-boundary checks, and 52 PostgreSQL/API/observability scenarios |
 | Tests without a database | All 28 domain/rule/architecture examples passed independently |
-| Migration compatibility | Original migration identifiers retained; repeated Infrastructure migrations preserve existing booking data |
+| Migration compatibility | Original migration identifiers retained; migration 003 adds nullable trace context to existing outbox data, and repeated migrations preserve the booking |
 | Concurrent API hosts | Verified final-slot exclusion, alternative allocation, and same-quote replay using independent host/connection pools |
 | Atomic failure injection | A deliberately rejected outbox insert rolled back appointment and both reservations |
 | Operations | Verified cancellation/start race, both booking/forecast commit orders, downstream impact without moving B, stale forecasts, and actual completion with insufficient remaining capacity for B |
 | Notifications | Verified provider failure, retry, competing dispatchers, abandoned claim recovery, exhausted failure/manual retry, ownership, and obsolete confirmation suppression |
-| Local migration and seed | Passed against `appointment_scheduler`; repeated migration is a no-op |
+| Observability | Six BDD scenarios passed: actual OTLP/HTTP logs/metrics/traces, request-to-booking-to-database-to-worker correlation, retry errors/recovery, stale forecast/freshness gauges, legacy events, collector 503 isolation, and unsampled trace propagation with metrics preserved |
+| Local viewers | Aspire/Prometheus Compose configuration and alert rules prepared; Docker execution unverified because Docker is unavailable |
+| Local migration and seed | Passed against `appointment_scheduler`, including the additive outbox trace-context migration |
 | Actual HTTP demo | Passed against Kestrel at localhost:5080: quote, booking, same-quote retry, cancellation, and mock notification inbox |
+| Observability HTTP smoke | Passed against a temporary Kestrel process: quote/commit/replay/cancel, two background delivery acceptances, JSON TraceId/SpanId matching the response header, and a 200 metrics scrape containing booking and operational measurements |
 | NuGet vulnerability check | No known vulnerable direct/transitive API packages reported by configured sources at check time |
 
 The rollback test deliberately emits a classified error log for PostgreSQL state 23514. That is the expected failure injection, not a failed test. The test and load databases are isolated, uniquely named, and removed by their runners. The application demonstration database remains available locally.
 
 BDD refactor verification originally passed 51 examples after splitting combined behaviors from the prior 31-case suite. At that stage application behavior and the recorded performance workload were unchanged. The subsequent Clean Architecture/DDD refactor added 23 domain, architecture, and migration checks. `dotnet test tests/Scheduler.Tests/Scheduler.Tests.csproj -c Release --no-restore` passed all 74 examples with none skipped on .NET runtime 10.0.13. The original integration scenarios continue to pass through the same HTTP contracts.
+
+## Post-observability short capacity run
+
+The 60-second workload was rerun after five seconds of warm-up with two Kestrel processes on .NET 10.0.13. Instrumentation, parent-based sampling at ratio 1, the Prometheus exporter, and operational polling were enabled. OTLP network export and console tracing were disabled; the load runner sets logs to Warning. Thus this measures the instrumented application, **not** the capacity or overhead of an attached telemetry backend or Information-level request logs.
+
+| Measurement | Result |
+| --- | --- |
+| Successful reads / distinct new bookings | 60,000 / 1,020 |
+| Failed read or booking requests / dropped arrivals | 0 / 0 |
+| Elapsed including response drain | 60.0146 seconds |
+| Read / booking throughput including drain | 999.76/s / 16.996/s |
+| Confirmation p50 / p95 / p99 | 6.42 / 8.50 / 10.14 ms |
+| Persisted overlapping reservations | 0 |
+| Notification backlog at final sample | 0 pending/processing items |
+
+All scheduled target arrivals completed. See [observability run raw result](performance/observability-60s.json). Small latency differences between these local runs are not evidence of a performance improvement. This remains a short synthetic workload, with no sustained collector-load, HA/failover, or monthly availability validation.
 
 ## Post-architecture-refactor short capacity run
 

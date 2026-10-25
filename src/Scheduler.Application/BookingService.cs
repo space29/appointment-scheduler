@@ -73,6 +73,7 @@ public sealed class BookingService(ISchedulingStore store, TimeProvider clock, I
                 }
                 catch (ContentionFailure ex)
                 {
+                    Telemetry.Contention.Add(1, new KeyValuePair<string, object?>("code", ex.Code));
                     logger.LogInformation("Booking contention on attempt {Attempt}: {Code}", attempt, ex.Code);
                     if (attempt < 3) await Task.Delay(TimeSpan.FromMilliseconds(10 * attempt), ct);
                 }
@@ -83,6 +84,8 @@ public sealed class BookingService(ISchedulingStore store, TimeProvider clock, I
         catch (RequestFailure error) { outcome = error.Code; throw; }
         finally
         {
+            activity?.SetTag("booking.outcome", outcome);
+            if (outcome == "error") activity?.SetStatus(ActivityStatusCode.Error);
             Telemetry.Bookings.Add(1, new KeyValuePair<string, object?>("outcome", outcome));
             Telemetry.BookingLatency.Record(watch.Elapsed.TotalMilliseconds, new KeyValuePair<string, object?>("outcome", outcome));
         }
@@ -98,6 +101,7 @@ public sealed class BookingService(ISchedulingStore store, TimeProvider clock, I
 
     public async Task<AppointmentView> Cancel(Guid id, ChangeRequest request, Actor actor, CancellationToken ct)
     {
+        using var activity = Telemetry.Activities.StartActivity("booking.cancel");
         await using var s = await store.Open(ct);
         await s.Begin();
         var appointment = await AppointmentWorkflow.Lock(s, id, actor);

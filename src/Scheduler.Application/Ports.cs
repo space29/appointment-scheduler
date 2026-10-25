@@ -83,7 +83,7 @@ public interface IReferenceDataReader
     Task<object> Read(Actor actor, CancellationToken ct);
 }
 public interface IDeliveryProvider { Task Send(Guid deliveryId, CancellationToken ct); }
-public sealed record DeliveryClaim(Guid Id, Guid Token, int PreviousAttempts, bool Suppressed);
+public sealed record DeliveryClaim(Guid Id, Guid Token, int PreviousAttempts, bool Suppressed, string? TraceParent = null, string? TraceState = null);
 public interface INotificationStore
 {
     Task Materialize(DateTime now, CancellationToken ct);

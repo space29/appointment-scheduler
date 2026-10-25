@@ -9,7 +9,7 @@ public sealed class Database(NpgsqlDataSource source)
 {
     internal async Task<Session> Open(CancellationToken ct)
     {
-        try { return new(await source.OpenConnectionAsync(ct), ct); }
+        try { return new(await InfrastructureTelemetry.Observe("connect", async () => await source.OpenConnectionAsync(ct)), ct); }
         catch (NpgsqlException ex) { throw Translate(ex); }
     }
     internal static PersistenceFailure Translate(NpgsqlException ex) => ex is PostgresException p && p.SqlState is "23P01" or "40P01" or "55P03"
@@ -39,25 +39,23 @@ internal sealed class Session(NpgsqlConnection connection, CancellationToken ct)
 {
     private NpgsqlTransaction? transaction;
     private CommandDefinition Cmd(string sql, object? args) => new(sql, args, transaction, commandTimeout: 10, cancellationToken: ct);
-    private static async Task<T> Run<T>(Func<Task<T>> action)
+    private static async Task<T> Run<T>(string operation, Func<Task<T>> action)
     {
-        try { return await action(); }
+        try { return await InfrastructureTelemetry.Observe(operation, action); }
         catch (NpgsqlException ex) { throw Database.Translate(ex); }
     }
-    public Task<int> Exec(string sql, object? args = null) => Run(() => connection.ExecuteAsync(Cmd(sql, args)));
-    public Task<T> Scalar<T>(string sql, object? args = null) => Run(async () => (await connection.ExecuteScalarAsync<T>(Cmd(sql, args)))!);
-    public Task<T?> One<T>(string sql, object? args = null) => Run(() => connection.QuerySingleOrDefaultAsync<T>(Cmd(sql, args)));
-    public Task<List<T>> Many<T>(string sql, object? args = null) => Run(async () => (await connection.QueryAsync<T>(Cmd(sql, args))).AsList());
+    public Task<int> Exec(string sql, object? args = null) => Run("execute", () => connection.ExecuteAsync(Cmd(sql, args)));
+    public Task<T> Scalar<T>(string sql, object? args = null) => Run("scalar", async () => (await connection.ExecuteScalarAsync<T>(Cmd(sql, args)))!);
+    public Task<T?> One<T>(string sql, object? args = null) => Run("query", () => connection.QuerySingleOrDefaultAsync<T>(Cmd(sql, args)));
+    public Task<List<T>> Many<T>(string sql, object? args = null) => Run("query", async () => (await connection.QueryAsync<T>(Cmd(sql, args))).AsList());
     public async Task Begin()
     {
-        try { transaction = await connection.BeginTransactionAsync(ct); }
-        catch (NpgsqlException ex) { throw Database.Translate(ex); }
+        transaction = await Run("begin", async () => await connection.BeginTransactionAsync(ct));
         await Exec("SET LOCAL lock_timeout='500ms'; SET LOCAL statement_timeout='5s'");
     }
     public async Task Commit()
     {
-        try { await transaction!.CommitAsync(ct); }
-        catch (NpgsqlException ex) { throw Database.Translate(ex); }
+        await Run("commit", async () => { await transaction!.CommitAsync(ct); return true; });
     }
     public async Task LockResources(Guid[] ids) => await Many<Guid>("SELECT id FROM resource WHERE id=ANY(@ids) ORDER BY id FOR UPDATE", new { ids });
     public async ValueTask DisposeAsync()

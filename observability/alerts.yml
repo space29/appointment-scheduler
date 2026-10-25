@@ -1,0 +1,51 @@
+groups:
+  - name: scheduler
+    rules:
+      - alert: SchedulerScrapeUnavailable
+        expr: up{job="scheduler"} == 0
+        for: 1m
+        labels: {severity: critical}
+        annotations:
+          summary: Scheduler metrics endpoint is unavailable
+      - alert: BookingP95TooSlow
+        expr: histogram_quantile(0.95, sum by (le) (rate(scheduler_booking_duration_milliseconds_bucket{outcome="confirmed"}[5m]))) > 2000
+        for: 5m
+        labels: {severity: warning}
+        annotations:
+          summary: Booking confirmation p95 exceeds two seconds
+      - alert: BookingP99TooSlow
+        expr: histogram_quantile(0.99, sum by (le) (rate(scheduler_booking_duration_milliseconds_bucket{outcome="confirmed"}[5m]))) > 3000
+        for: 5m
+        labels: {severity: critical}
+        annotations:
+          summary: Booking confirmation p99 exceeds three seconds
+      - alert: OutboxBacklogTooOld
+        expr: max(scheduler_outbox_oldest_age_seconds) > 30
+        for: 1m
+        labels: {severity: warning}
+        annotations:
+          summary: An outbox event has waited more than thirty seconds for materialization
+      - alert: NotificationDeliveryFailed
+        expr: max(scheduler_notification_failed) > 0
+        for: 1m
+        labels: {severity: warning}
+        annotations:
+          summary: A notification exhausted automatic retries and needs staff review
+      - alert: ExecutionForecastStale
+        expr: max(scheduler_execution_stale) > 0
+        for: 1m
+        labels: {severity: warning}
+        annotations:
+          summary: Unfinished work has an expired completion forecast
+      - alert: OperationalMetricsStale
+        expr: scheduler_operations_snapshot_age_seconds > 30
+        for: 1m
+        labels: {severity: warning}
+        annotations:
+          summary: Operational metrics have not refreshed successfully for thirty seconds
+      - alert: OperationalMetricsMissing
+        expr: up{job="scheduler"} == 1 unless on (job, instance) scheduler_operations_snapshot_age_seconds
+        for: 1m
+        labels: {severity: warning}
+        annotations:
+          summary: Scheduler is reachable but has not produced an operational metrics snapshot

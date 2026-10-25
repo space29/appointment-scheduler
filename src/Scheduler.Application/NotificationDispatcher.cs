@@ -1,6 +1,9 @@
+using System.Diagnostics;
+using Microsoft.Extensions.Logging;
+
 namespace Scheduler.Application;
 
-public sealed class NotificationDispatcher(INotificationStore notifications, ISchedulingStore scheduling, TimeProvider clock, IDeliveryProvider provider)
+public sealed class NotificationDispatcher(INotificationStore notifications, ISchedulingStore scheduling, TimeProvider clock, IDeliveryProvider provider, ILogger<NotificationDispatcher> logger)
 {
     private DateTime Now => clock.GetUtcNow().UtcDateTime;
     public async Task<int> DispatchBatch(CancellationToken ct)
@@ -11,15 +14,27 @@ public sealed class NotificationDispatcher(INotificationStore notifications, ISc
         {
             var claim = await notifications.Claim(Now, ct);
             if (claim == null) break;
-            if (claim.Suppressed) continue;
+            ActivityContext.TryParse(claim.TraceParent, claim.TraceState, isRemote: true, out var parent);
+            using var activity = Telemetry.Activities.StartActivity("notification.deliver", ActivityKind.Consumer, parent);
+            if (claim.Suppressed)
+            {
+                activity?.SetTag("notification.outcome", "Suppressed");
+                Telemetry.Deliveries.Add(1, new KeyValuePair<string, object?>("outcome", "Suppressed"));
+                continue;
+            }
             var success = false;
             // Claim is committed before the provider is invoked.
             try { await provider.Send(claim.Id, ct); success = true; }
             catch (DeliveryUnavailableException) { }
             var status = success ? "ProviderAccepted" : claim.PreviousAttempts + 1 >= 5 ? "Failed" : "Pending";
+            activity?.SetTag("notification.outcome", status);
+            activity?.SetTag("notification.attempt", claim.PreviousAttempts + 1);
+            if (!success) activity?.SetStatus(ActivityStatusCode.Error);
             await notifications.Acknowledge(claim, status, success ? null : "PROVIDER_UNAVAILABLE",
                 Now.AddSeconds(Math.Min(60, Math.Pow(2, claim.PreviousAttempts + 1)) + Random.Shared.NextDouble()), ct);
             Telemetry.Deliveries.Add(1, new KeyValuePair<string, object?>("outcome", status));
+            logger.Log(success ? LogLevel.Information : LogLevel.Warning,
+                "Notification {DeliveryId} attempt {Attempt} finished with {Outcome}", claim.Id, claim.PreviousAttempts + 1, status);
         }
         return count;
     }

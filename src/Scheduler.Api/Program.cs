@@ -1,10 +1,12 @@
 using System.Diagnostics;
+using OpenTelemetry.Metrics;
 using Scheduler.Api;
 using Scheduler.Application;
 using Scheduler.Domain;
 using Scheduler.Infrastructure;
 
 var builder = WebApplication.CreateBuilder(args);
+builder.AddSchedulerObservability();
 builder.Services.AddOpenApi();
 builder.Services.ConfigureHttpJsonOptions(o => o.SerializerOptions.Converters.Add(new ExplicitOffsetConverter()));
 builder.Services.AddProblemDetails();
@@ -30,11 +32,13 @@ if (!app.Environment.IsDevelopment() && !app.Environment.IsEnvironment("Testing"
 app.Use(async (context, next) =>
 {
     var started = Stopwatch.GetTimestamp();
+    var traceId = Activity.Current?.TraceId.ToString() ?? context.TraceIdentifier;
+    context.Response.Headers["X-Trace-Id"] = traceId;
     try { await next(context); }
     catch (DomainError error)
     {
         await Results.Problem(statusCode: error.Kind == RuleFailure.Validation ? 400 : 409, title: error.Code, detail: error.Message,
-            extensions: new Dictionary<string, object?> { ["code"] = error.Code, ["traceId"] = context.TraceIdentifier }).ExecuteAsync(context);
+            extensions: new Dictionary<string, object?> { ["code"] = error.Code, ["traceId"] = traceId }).ExecuteAsync(context);
     }
     catch (RequestFailure error)
     {
@@ -44,33 +48,35 @@ app.Use(async (context, next) =>
             FailureType.Forbidden => 403, FailureType.Unauthenticated => 401, _ => 500
         };
         await Results.Problem(statusCode: status, title: error.Code, detail: error.Message,
-            extensions: new Dictionary<string, object?> { ["code"] = error.Code, ["traceId"] = context.TraceIdentifier }).ExecuteAsync(context);
+            extensions: new Dictionary<string, object?> { ["code"] = error.Code, ["traceId"] = traceId }).ExecuteAsync(context);
     }
     catch (BadHttpRequestException)
     {
-        await Results.Problem(statusCode: 400, title: "INVALID_REQUEST", detail: "Check the JSON body, identifiers, and explicit timestamp offsets.").ExecuteAsync(context);
+        await Results.Problem(statusCode: 400, title: "INVALID_REQUEST", detail: "Check the JSON body, identifiers, and explicit timestamp offsets.",
+            extensions: new Dictionary<string, object?> { ["traceId"] = traceId }).ExecuteAsync(context);
     }
     catch (OperationCanceledException) when (context.RequestAborted.IsCancellationRequested) { }
     catch (Exception ex)
     {
         // SQL details may contain business data. Log a bounded classification, never connection strings or bodies.
-        app.Logger.LogError("Request {TraceId} failed: {ErrorType}, persistence code {Code}", context.TraceIdentifier, ex.GetType().Name, (ex as PersistenceFailure)?.Code);
+        Activity.Current?.SetStatus(ActivityStatusCode.Error);
+        app.Logger.LogError("Request {TraceId} failed: {ErrorType}, persistence code {Code}", traceId, ex.GetType().Name, (ex as PersistenceFailure)?.Code);
         var unavailable = ex is PersistenceFailure or TimeoutException;
         await Results.Problem(statusCode: unavailable ? 503 : 500, title: unavailable ? "SERVICE_UNAVAILABLE" : "UNEXPECTED_ERROR",
             detail: "The request could not be completed. For booking, retry with the same quote identifier.",
-            extensions: new Dictionary<string, object?> { ["traceId"] = context.TraceIdentifier }).ExecuteAsync(context);
+            extensions: new Dictionary<string, object?> { ["traceId"] = traceId }).ExecuteAsync(context);
     }
     finally
     {
         app.Logger.LogInformation("HTTP {Method} {Route} returned {Status} in {ElapsedMs} ms, trace {TraceId}",
             context.Request.Method, (context.GetEndpoint() as RouteEndpoint)?.RoutePattern.RawText ?? "unmatched",
-            context.Response.StatusCode, Stopwatch.GetElapsedTime(started).TotalMilliseconds, context.TraceIdentifier);
+            context.Response.StatusCode, Stopwatch.GetElapsedTime(started).TotalMilliseconds, traceId);
     }
 });
 
 app.Use(async (context, next) =>
 {
-    if (context.Request.Path.StartsWithSegments("/health") || context.Request.Path.StartsWithSegments("/openapi"))
+    if (context.Request.Path.StartsWithSegments("/health") || context.Request.Path.StartsWithSegments("/openapi") || context.Request.Path == "/metrics")
     { await next(context); return; }
     var value = context.Request.Headers["X-Demo-Actor"].ToString();
     Actor? actor = value switch
@@ -86,6 +92,7 @@ app.Use(async (context, next) =>
 });
 
 app.MapOpenApi();
+app.MapPrometheusScrapingEndpoint();
 app.MapGet("/health/live", () => Results.Ok(new { status = "Alive" }));
 app.MapGet("/health/ready", async (IReferenceDataReader data, CancellationToken ct) =>
 {

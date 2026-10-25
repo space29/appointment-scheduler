@@ -16,8 +16,10 @@ flowchart LR
     DB --> Worker[Durable outbox worker]
     Worker --> Inbox[Recipient inbox]
     Worker --> Mock[Mock delivery provider]
-    API --> Telemetry[Logs activities and meters]
+    API --> Telemetry[OpenTelemetry SDK]
     Worker --> Telemetry
+    Telemetry --> Viewer[Optional Aspire logs traces and metrics]
+    Telemetry --> Metrics[Prometheus metrics endpoint]
 ```
 
 One ASP.NET Core host composes four projects: Domain, Application, Infrastructure, and API. Booking, operations, and notification use cases live in Application; lifecycle behavior and policies live in Domain; PostgreSQL and delivery adapters live in Infrastructure. This keeps a five-day assessment understandable and lets a database transaction encompass each business change and its event. Worker delivery is outside business transactions. The same application can run on multiple instances without process-local booking locks; durable delivery claims coordinate the workers. See [architecture boundaries and aggregate details](architecture.md).
@@ -81,9 +83,11 @@ Adding API replicas does not scale the PostgreSQL writer automatically or create
 
 ## Observability and operational limits
 
-Structured logs include request trace IDs, route patterns, status, elapsed time, booking outcome/attempt count, and delivery IDs. Logs omit raw request bodies, contacts, VINs, credentials, and provider content. `Scheduler` activities and meters emit booking outcomes/duration and delivery outcomes. A production OpenTelemetry exporter/collector, dashboards, and alert rules are not configured in this assessment.
+The API composes OpenTelemetry tracing, metrics, and logging providers. JSON logs correlate distributed trace/span IDs with request route/status/elapsed time, booking commit/attempt, and delivery outcomes. Booking and database spans extend into later notification attempts through W3C context saved in the transactional outbox. `/metrics` exposes booking/HTTP/database/runtime measurements; an asynchronous database snapshot supplies outbox, delivery failure, stale-forecast, and incident gauges. Operational snapshot age exposes stale observations after a failed refresh. Domain remains independent of telemetry libraries.
 
-Monitor booking p95/p99, unique commit throughput, error/conflict reasons, pool/lock waits, database CPU/I/O, pending outbox age/count, failed deliveries, stale forecasts, unresolved impacts, and replication/failover behavior. Inbox and impact endpoints expose relevant operational state locally. A periodic stale-forecast watchdog, background retention/archival, provider webhooks, and production identity/access control are future work. Runtime API hosting currently fails closed outside Development/Testing.
+Optional OTLP/HTTP exporters send all three signals to a configured endpoint. Compose supplies local Aspire/Prometheus viewers and sample alert rules; Docker execution remains unverified on this workstation. BDD tests verify actual OTLP requests, cross-worker trace correlation, retries, sampling, and collector outage isolation. See [observability setup and metric interpretation](observability.md), including the prerelease local scrape-exporter tradeoff and database-wide gauge aggregation across replicas.
+
+Production still needs a telemetry backend with retention, alert routing, independent synthetic/readiness probes, database-native pool/lock/CPU/I/O and replication monitoring, and failover validation. Database spans expose operation duration, not a breakdown of lock versus execution time. The periodic observer detects stale forecasts but does not resolve them or reschedule appointments. Background retention/archival, provider webhooks, and production identity/access control are future work. Runtime API hosting currently fails closed outside Development/Testing.
 
 ## Design-phase GenAI collaboration
 

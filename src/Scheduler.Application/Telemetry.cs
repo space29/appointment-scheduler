@@ -10,4 +10,5 @@ public static class Telemetry
     public static readonly Counter<long> Bookings = Meter.CreateCounter<long>("scheduler.booking.outcomes");
     public static readonly Histogram<double> BookingLatency = Meter.CreateHistogram<double>("scheduler.booking.duration", "ms");
     public static readonly Counter<long> Deliveries = Meter.CreateCounter<long>("scheduler.notification.outcomes");
+    public static readonly Counter<long> Contention = Meter.CreateCounter<long>("scheduler.booking.contention");
 }
