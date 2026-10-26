@@ -14,25 +14,33 @@ I focused on the backend using .NET and PostgreSQL. The main requirement is to b
 
 Beyond the core brief, I considered workshop overruns, cancellation, notifications, and configured peak and off-peak pricing. I’ll explain the main decisions, demonstrate the booking flow, and describe how I worked with AI.”
 
-**0:35–1:25 — Architecture**
+**0:35–1:45 — Architecture**
 
-*Show the component diagram in `docs/system-design.md`, then the four production projects.*
+*Show the first component diagram in `docs/system-design.md`. Point from left to right: web client → API → quote/booking components → PostgreSQL → notification worker. Then point to operations and telemetry.*
 
-“The solution has four layers: Domain, Application, Infrastructure, and API.
+“This diagram shows how a booking moves through the system.
 
-Domain owns the appointment lifecycle and business rules. Application coordinates use cases such as booking, cancellation, and reporting progress. Infrastructure implements PostgreSQL persistence and notification delivery. API handles HTTP and connects the components.
+The web client calls the ASP.NET Core API. First, the quote component calculates the estimated duration, buffer, and configured price.
 
-The appointment is the aggregate root, and its work execution tracks what actually happens in the workshop. Value objects validate money, time intervals, and service estimates.
+When the customer confirms, the booking component allocates a qualified technician and a bay for the entire interval. PostgreSQL stores the appointment and enforces reservation constraints.
 
-I kept this as one deployable application. For a five-day assignment, that keeps the system understandable and lets a booking and its notification event commit in one database transaction.”
+The transaction also saves an outbox event. A background worker processes it asynchronously to create notifications, so confirmation does not depend on the delivery provider.
 
-**1:25–2:30 — Booking correctness and concurrency**
+The operations component handles work starting, progress updates, and completion. The API and worker emit logs, metrics, and traces for diagnosis.”
+
+*Switch to the solution folders and point to each project as you name its responsibility.*
+
+“These components run within one application, organized into four projects.
+
+Domain owns business rules. Application coordinates use cases. Infrastructure implements persistence and delivery. API handles HTTP and connects the components.”
+
+**1:45–2:45 — Booking correctness and concurrency**
 
 *Show `BookingService.Book`, then the reservation exclusion constraint in `001_initial.sql`.*
 
 “The difficult part is handling concurrent requests for the same resources.
 
-A request first obtains a quote containing the estimated duration, buffer, and price. A quote does not reserve capacity.
+A quote captures duration and price, but does not reserve capacity.
 
 During confirmation, the application finds candidate resources, locks them in a consistent order, and checks availability again. PostgreSQL also has an exclusion constraint that prevents overlapping active reservations for the same resource.
 
@@ -42,7 +50,7 @@ The appointment, its resource reservations, and its outbox event commit together
 
 The quote identifier also makes confirmation idempotent. If the server commits but the response is lost, the customer can retry the same quote and receive the existing appointment. That avoids creating a second booking.”
 
-**2:30–4:00 — API demonstration**
+**2:45–4:15 — API demonstration**
 
 *Show prepared API requests and responses. Pause briefly at each result.*
 
@@ -60,7 +68,7 @@ Next, I cancel before work starts. The appointment history remains, and its plan
 
 The notification worker processes the committed events asynchronously. The provider is mocked for this assessment, and the inbox exposes the resulting notifications.”
 
-**4:00–4:50 — A realistic workshop overrun**
+**4:15–5:05 — A realistic workshop overrun**
 
 *Show `OperationsService.Progress` and an overrun scenario in `OperationsScenarios.cs`.*
 
@@ -72,7 +80,7 @@ It does not move the next customer’s appointment automatically. An unfinished 
 
 Additional staffing and customer-approved rescheduling are documented extensions. Staff would judge whether extra help could shorten the work; the scheduler would validate resource availability and preserve customer consent.”
 
-**4:50–6:00 — Testing and observability**
+**5:05–6:15 — Testing and observability**
 
 *Show the recorded 80-test result, a Given–When–Then scenario, `Observability.cs`, and a metrics response or correlated log.*
 
@@ -88,7 +96,7 @@ Metrics include booking duration, outcomes, delivery failures, and stale forecas
 
 The local Aspire and Prometheus dashboards have also been verified with a real booking trace, exported logs, and scraped metrics.”
 
-**6:00–6:45 — Performance evidence and scaling**
+**6:15–7:00 — Performance evidence and scaling**
 
 *Show the post-observability results in `docs/validation.md`.*
 
@@ -100,7 +108,7 @@ That is a short synthetic result. OTLP export was disabled and logging was set t
 
 API instances can scale horizontally, while the shared PostgreSQL writer still needs capacity planning and failover validation.”
 
-**6:45–8:15 — AI collaboration**
+**7:00–8:30 — AI collaboration**
 
 *Show the README AI Collaboration Narrative and the relevant conversation examples, if available.*
 
@@ -120,7 +128,7 @@ AI generated substantial code, and the work was checked through compilation, rea
 
 For me, the useful part of AI collaboration was making assumptions visible and testing them. The generated output still needs engineering review, and I remain responsible for understanding and explaining the solution.”
 
-**8:15–9:15 — What I learned and challenges I faced**
+**8:30–9:30 — What I learned and challenges I faced**
 
 *Show the overrun design, then a booking trace in Aspire. Speak about your experience rather than reading code.*
 
@@ -132,16 +140,14 @@ What I learned is to define a business guarantee precisely, then gather evidence
 
 Working with AI also reinforced the value of specific review questions. Challenging duration, customer consent, and missing telemetry led to concrete improvements.”
 
-**9:15–9:50 — Tradeoffs and next steps**
+**9:30–9:50 — Tradeoffs and next steps**
 
 *Return to the README scope and extension notes.*
 
-“The main tradeoffs are explicit: SQL requires mapping maintenance, and external notification delivery must handle possible duplicates.
+“SQL requires mapping maintenance, and notification delivery must handle duplicates.
 
-Production authentication, online payment, real messaging providers, and consent-based recovery remain future work.
+Next steps are production authentication, payment and messaging integrations, consent-based recovery, sustained load testing, and database failover testing.
 
-My next steps would be sustained testing with telemetry export enabled, database failover testing, and the customer-consent workflow.
+Thank you for reviewing my solution.”
 
-Thank you for reviewing my solution. I’m happy to discuss the design and tradeoffs in more detail.”
-
-If rehearsal runs long, shorten the architecture paragraph about value objects and the list of metrics. Keep the booking demonstration, concurrency explanation, explicit implementation limits, the 1–2 minute AI collaboration section, and the reflection on learning and challenges. The timestamps are rehearsal targets; adjust the pace after a timed practice run.
+If rehearsal runs long, shorten the project-folder explanation and the list of metrics. Keep the booking demonstration, concurrency explanation, explicit implementation limits, the 1–2 minute AI collaboration section, and the reflection on learning and challenges. The timestamps are rehearsal targets; adjust the pace after a timed practice run.
