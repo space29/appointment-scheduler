@@ -1,6 +1,6 @@
 Video script for the Keyloop assessment
 
-Aim for roughly nine minutes, including short screen transitions. The final length depends on your speaking pace; rehearse once and keep the recording below ten minutes. The AI collaboration section is intended to take 90 seconds. Italic screen cues are directions, not words to read aloud. Replace the name placeholder and adjust wording to match your own voice.
+Aim for roughly nine and a half minutes, including short screen transitions. The final length depends on your speaking pace; rehearse once and keep the recording below ten minutes. The AI collaboration section is intended to take 90 seconds, followed by a one-minute reflection on learning and challenges. Italic screen cues are directions, not words to read aloud. Replace the name placeholder and adjust wording to match your own voice and experience.
 
 Before recording, open the system diagram, solution folders, API request examples, test results, observability code, and recorded benchmark. Configure the database connection off camera. Prepare quote, confirm, replay, and cancel requests from `docs/api.md`, using Swagger UI if preferred. The existing `scripts/demo.ps1` performs this sequence if your shell permits local scripts. Rehearse the requests against a free future slot. Use recorded results when explaining completed tests; only say you are running something live when you actually do so. Aspire and Prometheus have been verified locally; open their pages before recording the observability segment.
 
@@ -120,18 +120,28 @@ AI generated substantial code, and the work was checked through compilation, rea
 
 For me, the useful part of AI collaboration was making assumptions visible and testing them. The generated output still needs engineering review, and I remain responsible for understanding and explaining the solution.”
 
-**8:15–9:00 — Tradeoffs and next steps**
+**8:15–9:15 — What I learned and challenges I faced**
+
+*Show the overrun design, then a booking trace in Aspire. Speak about your experience rather than reading code.*
+
+“The main design challenge was handling an overrun without breaking the next customer's agreed appointment. That led me to separate the accepted reservation, actual resource occupancy, and the latest completion forecast.
+
+Another challenge was validating observability end to end. Logs and metrics needed working exporters, trace context across the outbox, and dashboards receiving actual application data.
+
+What I learned is to define a business guarantee precisely, then gather evidence for it. For booking correctness, that meant database constraints and concurrent PostgreSQL tests. For performance, it meant distinguishing a short local result from sustained capacity and availability.
+
+Working with AI also reinforced the value of specific review questions. Challenging duration, customer consent, and missing telemetry led to concrete improvements.”
+
+**9:15–9:50 — Tradeoffs and next steps**
 
 *Return to the README scope and extension notes.*
 
-“The main tradeoffs are explicit. PostgreSQL locking and constraints provide strong booking correctness, while explicit SQL adds mapping and maintenance work.
+“The main tradeoffs are explicit: SQL requires mapping maintenance, and external notification delivery must handle possible duplicates.
 
-The outbox separates notification delivery from booking confirmation. External delivery is at least once, so a real provider integration must handle possible duplicates.
+Production authentication, online payment, real messaging providers, and consent-based recovery remain future work.
 
-The implemented scope includes booking, cancellation, execution tracking, configured pricing, and mock notifications. Production authentication, online payment, real messaging providers, and consent-based recovery remain future work.
+My next steps would be sustained testing with telemetry export enabled, database failover testing, and the customer-consent workflow.
 
-My next steps would be longer load testing with telemetry export enabled, database failover testing, and implementing the customer-consent workflow.
+Thank you for reviewing my solution. I’m happy to discuss the design and tradeoffs in more detail.”
 
-Thank you for reviewing my solution. I’m happy to discuss the concurrency decisions, domain model, and tradeoffs in more detail.”
-
-If rehearsal runs long, shorten the architecture paragraph about value objects and the list of metrics. Keep the booking demonstration, concurrency explanation, explicit implementation limits, and the 1–2 minute AI collaboration section.
+If rehearsal runs long, shorten the architecture paragraph about value objects and the list of metrics. Keep the booking demonstration, concurrency explanation, explicit implementation limits, the 1–2 minute AI collaboration section, and the reflection on learning and challenges. The timestamps are rehearsal targets; adjust the pace after a timed practice run.
