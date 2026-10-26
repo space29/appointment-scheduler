@@ -1,0 +1,18 @@
+# Dashboard containers for an API running directly on the Windows host.
+# Docker Desktop supplies host.docker.internal; PostgreSQL and the API stay on the host.
+name: scheduler-telemetry
+services:
+  dashboard:
+    extends:
+      file: compose.observability.yaml
+      service: dashboard
+  prometheus:
+    image: prom/prometheus:v3.5.0
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=1d
+    volumes:
+      - ./observability/prometheus.local.yml:/etc/prometheus/prometheus.yml:ro
+      - ./observability/alerts.yml:/etc/prometheus/alerts.yml:ro
+    ports:
+      - "127.0.0.1:9090:9090"

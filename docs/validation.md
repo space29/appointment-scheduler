@@ -17,7 +17,7 @@ Swagger UI follow-up, 26 October 2026: the API Release build passed with zero wa
 | Operations | Verified cancellation/start race, both booking/forecast commit orders, downstream impact without moving B, stale forecasts, and actual completion with insufficient remaining capacity for B |
 | Notifications | Verified provider failure, retry, competing dispatchers, abandoned claim recovery, exhausted failure/manual retry, ownership, and obsolete confirmation suppression |
 | Observability | Six BDD scenarios passed: actual OTLP/HTTP logs/metrics/traces, request-to-booking-to-database-to-worker correlation, retry errors/recovery, stale forecast/freshness gauges, legacy events, collector 503 isolation, and unsampled trace propagation with metrics preserved |
-| Local viewers | Aspire/Prometheus Compose configuration and alert rules prepared; Docker execution unverified because Docker is unavailable |
+| Local viewers (26 October follow-up) | Docker Desktop ran `compose.telemetry.yaml`; Aspire received logs/traces/metrics, including a real booking and asynchronous delivery in one trace; Prometheus target was up and booking metrics were queryable; promtool validated the configuration and all eight rules |
 | Local migration and seed | Passed against `appointment_scheduler`, including the additive outbox trace-context migration |
 | Actual HTTP demo | Passed against Kestrel at localhost:5080: quote, booking, same-quote retry, cancellation, and mock notification inbox |
 | Observability HTTP smoke | Passed against a temporary Kestrel process: quote/commit/replay/cancel, two background delivery acceptances, JSON TraceId/SpanId matching the response header, and a 200 metrics scrape containing booking and operational measurements |
@@ -94,7 +94,7 @@ The original scheduler could replay overdue arrivals in a burst and had no sched
 
 - The planned five-minute warm-up / 30-minute sustained workload, realistic larger customer/dealership mixes, and production-scale dataset history.
 - Capacity after instance loss, database failover, zone loss, recovery time, durable replication, restore exercises, or monthly 99.9% uptime.
-- Docker/Compose execution on this workstation, where Docker is unavailable.
+- Full-stack Compose API/database execution; the standalone telemetry Compose deployment has been verified.
 - Actual external-provider idempotency/delivery behavior, production identity, authentication UI, online payment, recovery proposal/support allocation workflows, or real reminders.
 
 The GitHub Actions workflow is included; its remote execution status must be checked separately after publication. The applicant's code review and 5–10 minute video remain submission tasks.

@@ -26,17 +26,23 @@ docker compose -f compose.yaml -f compose.observability.yaml up --build
 
 Open Aspire at `http://localhost:18888` for structured logs, trace waterfalls, and metrics; select `appointment-scheduler`. Prometheus at `http://localhost:9090` provides metric history, PromQL queries, and the Alerts page. The dashboard, OTLP receiver, and Prometheus host ports bind only to loopback. Anonymous dashboard access is an explicit local demonstration setting. The API keeps serving if the dashboard is unavailable; it has no collector readiness dependency.
 
-To use the workstation's existing PostgreSQL/API instead of the Compose database, start only the dashboard, then configure the local API before restarting it:
+To use the workstation's existing PostgreSQL/API, start the two dashboard containers with the standalone file. This is the setup verified locally on 26 October 2026:
 
 ```powershell
-docker compose -f compose.yaml -f compose.observability.yaml up -d --no-deps dashboard
+docker compose -f compose.telemetry.yaml up -d
 $env:Observability__OtlpEndpoint = 'http://127.0.0.1:4318'
-# Restart the local API using the previous dotnet run command.
+$env:AllowedHosts = 'localhost;127.0.0.1;host.docker.internal'
+$env:OTEL_METRIC_EXPORT_INTERVAL = '5000'
+# Set the database connection and Development environment as in README.
+# Stop the previous API process before starting another on the same port.
+dotnet run --project src/Scheduler.Api -c Release --no-build --no-launch-profile --urls http://127.0.0.1:5080
 ```
 
-Compose still interpolates the base file, so set the disposable `POSTGRES_PASSWORD` variable even for dashboard-only startup. `Observability:OtlpEndpoint` is a base URL; the SDK sends protobuf over HTTP to `/v1/traces`, `/v1/metrics`, and `/v1/logs`. A blank endpoint disables network export. This application uses that setting explicitly rather than automatically exporting to an ambient OTLP endpoint. Metrics export periodically (SDK default: 60 seconds); traces/logs use bounded background batches. Export timeout is three seconds, independent of the booking transaction. These queues are best effort, not a durable telemetry outbox.
+This standalone file starts no API or database container and needs no database password. Prometheus reaches the host API through Docker Desktop's `host.docker.internal:5080`; the API remains bound to `127.0.0.1`. Its AllowedHosts setting must include that host name. The standalone file and the full-stack override publish the same dashboard ports, so run one arrangement at a time. To stop only these dashboard containers, use `docker compose -f compose.telemetry.yaml down`.
 
-Docker is unavailable on the implementation workstation. The Compose viewer and Prometheus configuration are provided but have not been run there. Automated tests **do** send all three signal types to a real local HTTP receiver and verify the payloads, correlation, and behavior when it returns 503. The [standalone Aspire documentation](https://aspire.dev/dashboard/standalone/) describes its local viewing model and ports; the pinned image tag is listed in [Microsoft's image registry](https://mcr.microsoft.com/v2/dotnet/aspire-dashboard/tags/list).
+`Observability:OtlpEndpoint` is a base URL; the SDK sends protobuf over HTTP to `/v1/traces`, `/v1/metrics`, and `/v1/logs`. A blank endpoint disables network export. This application uses that setting explicitly rather than automatically exporting to an ambient OTLP endpoint. Metrics export periodically (SDK default: 60 seconds; the local command above uses five seconds); traces/logs use bounded background batches. Export timeout is three seconds, independent of the booking transaction. These queues are best effort, not a durable telemetry outbox.
+
+The standalone dashboard containers have now been run and verified: Aspire reports logs, traces, and metrics for `appointment-scheduler`; a real demo booking's commit log and booking/database/notification spans were retrieved from Aspire; Prometheus scraped its booking outcome metric and reported the target healthy. The demo appointment was cancelled afterward. `promtool` validated the scrape configuration and all eight alert rules. Automated tests separately verify collector failure isolation. The full-stack Compose API/database deployment remains unexecuted. The [standalone Aspire documentation](https://aspire.dev/dashboard/standalone/) describes its local viewing model and ports; the pinned image tag is listed in [Microsoft's image registry](https://mcr.microsoft.com/v2/dotnet/aspire-dashboard/tags/list).
 
 ## What is instrumented
 
@@ -90,7 +96,7 @@ max(scheduler_execution_stale)
 `observability/alerts.yml` supplies local rules for p95 >2s, p99 >3s, an old outbox backlog, exhausted deliveries, stale execution forecasts, missing/stale operational snapshots, and scrape unavailability. These appear in Prometheus; no Alertmanager, paging, or external notifications are configured. The non-latency thresholds are initial demo choices requiring operational tuning. With Docker available, validate syntax using:
 
 ```powershell
-docker compose -f compose.yaml -f compose.observability.yaml run --rm --no-deps --entrypoint promtool prometheus check rules /etc/prometheus/alerts.yml
+docker compose -f compose.telemetry.yaml exec -T prometheus promtool check config /etc/prometheus/prometheus.yml
 ```
 
 ## Limits and production follow-up
