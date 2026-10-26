@@ -50,7 +50,7 @@ In another terminal:
 ./scripts/demo.ps1 -BaseUrl http://127.0.0.1:5080
 ```
 
-OpenAPI JSON: `http://127.0.0.1:5080/openapi/v1.json`. Liveness and database readiness: `/health/live` and `/health/ready`. The migration command is repeatable and records applied embedded SQL files; it never resets existing data. Demo availability covers dated 08:00–18:00 local intervals for the next year starting at initial seeding. Refresh dated seed data explicitly for an old demonstration database.
+Swagger UI: `http://127.0.0.1:5080/swagger`. Click **Authorize**, enter `customer-a`, and use **Try it out** to send customer requests. Use `staff` for workshop operations. OpenAPI JSON remains at `/openapi/v1.json`; liveness and database readiness are `/health/live` and `/health/ready`. The migration command is repeatable and records applied embedded SQL files; it never resets existing data. Demo availability covers dated 08:00–18:00 local intervals for the next year starting at initial seeding. Refresh dated seed data explicitly for an old demonstration database.
 
 Demo identity uses the `X-Demo-Actor` header with `customer-a`, `customer-b`, or `staff`. Customer access is limited to owned records and staff access to the seeded dealership. **These headers are impersonatable test identities, not production authentication.** The application refuses to serve requests outside Development/Testing until real authentication is implemented. Keep the demo bound to localhost.
 

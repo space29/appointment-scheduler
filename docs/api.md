@@ -2,6 +2,8 @@
 
 All business endpoints require `X-Demo-Actor: customer-a`, `customer-b`, or `staff` in the local demonstration. Identifiers below come from the seed. Use future dates within seeded availability.
 
+Interactive documentation is at `http://127.0.0.1:5080/swagger`. Click **Authorize**, enter `customer-a`, click **Authorize** and close the dialog. Expand an endpoint, choose **Try it out**, supply its body or parameters, and click **Execute**. Swagger sends `X-Demo-Actor` automatically for business requests. To change roles, reopen Authorize, log out of the current demo identity, and enter `staff` or `customer-b`. Health endpoints need no identity. The UI uses the existing `/openapi/v1.json` document and is available within the application's Development/Testing boundary.
+
 ```http
 GET http://127.0.0.1:5080/reference-data
 X-Demo-Actor: customer-a

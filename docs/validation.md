@@ -2,6 +2,8 @@
 
 Date: 25 October 2026 (Asia/Saigon). These observations apply to this implementation and local environment, not to an unprovisioned production system.
 
+Swagger UI follow-up, 26 October 2026: the API Release build passed with zero warnings/errors, and all five API access scenarios passed, including the documented demo identity requirement and anonymous health contract. The restarted local API returned 200 for `/swagger`, the HTML/CSS/JavaScript assets, and `/openapi/v1.json`; a customer-a reference-data request also succeeded. The dependency audit reported no known vulnerable API packages from the configured sources. Browser rendering was not automated in this check.
+
 ## Correctness and execution
 
 | Check | Result |

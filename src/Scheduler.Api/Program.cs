@@ -7,7 +7,7 @@ using Scheduler.Infrastructure;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.AddSchedulerObservability();
-builder.Services.AddOpenApi();
+builder.Services.AddSchedulerOpenApi();
 builder.Services.ConfigureHttpJsonOptions(o => o.SerializerOptions.Converters.Add(new ExplicitOffsetConverter()));
 builder.Services.AddProblemDetails();
 builder.Services.AddSingleton(TimeProvider.System);
@@ -72,6 +72,15 @@ app.Use(async (context, next) =>
             context.Request.Method, (context.GetEndpoint() as RouteEndpoint)?.RoutePattern.RawText ?? "unmatched",
             context.Response.StatusCode, Stopwatch.GetElapsedTime(started).TotalMilliseconds, traceId);
     }
+});
+
+// The host guard above restricts both the API and its interactive documentation to Development/Testing.
+app.UseSwaggerUI(options =>
+{
+    options.RoutePrefix = "swagger";
+    options.DocumentTitle = "Appointment Scheduler API";
+    options.SwaggerEndpoint("../openapi/v1.json", "Appointment Scheduler v1");
+    options.EnableFilter();
 });
 
 app.Use(async (context, next) =>

@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text;
+using System.Text.Json;
 using FluentAssertions;
 using Scheduler.Application;
 using Scheduler.Infrastructure;
@@ -80,5 +81,14 @@ public sealed class ApiAccessScenarios(DatabaseFixture database) : SchedulerScen
 
         // Then the quote operation is included in that contract.
         contract.Should().Contain("/appointment-quotes");
+        using var document = JsonDocument.Parse(contract);
+        var scheme = document.RootElement.GetProperty("components").GetProperty("securitySchemes").GetProperty("DemoActor");
+        scheme.GetProperty("type").GetString().Should().Be("apiKey");
+        scheme.GetProperty("in").GetString().Should().Be("header");
+        scheme.GetProperty("name").GetString().Should().Be("X-Demo-Actor");
+        var paths = document.RootElement.GetProperty("paths");
+        paths.GetProperty("/appointments").GetProperty("post").GetProperty("security")[0]
+            .GetProperty("DemoActor").GetArrayLength().Should().Be(0);
+        paths.GetProperty("/health/ready").GetProperty("get").TryGetProperty("security", out var security).Should().BeFalse();
     }
 }
