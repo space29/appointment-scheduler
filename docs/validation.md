@@ -9,13 +9,15 @@ Swagger UI follow-up, 26 October 2026: the API Release build passed with zero wa
 | Check | Result |
 | --- | --- |
 | Release build, all six projects | Passed, zero warnings and errors after the observability implementation |
-| Automated tests | 80 passed, zero failed/skipped: 24 domain/rule examples, four dependency/mutation-boundary checks, and 52 PostgreSQL/API/observability scenarios |
-| Tests without a database | All 28 domain/rule/architecture examples passed independently |
+| Automated tests (27 October cache follow-up) | 91 passed, zero failed/skipped: 24 domain/rule examples, six cache unit examples, four architecture checks, and 57 PostgreSQL/API/observability/cache scenarios |
+| Tests without a database | All 34 domain/rule/cache-unit/architecture examples passed independently |
 | Migration compatibility | Original migration identifiers retained; migration 003 adds nullable trace context to existing outbox data, and repeated migrations preserve the booking |
 | Concurrent API hosts | Verified final-slot exclusion, alternative allocation, and same-quote replay using independent host/connection pools |
 | Atomic failure injection | A deliberately rejected outbox insert rolled back appointment and both reservations |
 | Operations | Verified cancellation/start race, both booking/forecast commit orders, downstream impact without moving B, stale forecasts, and actual completion with insufficient remaining capacity for B |
 | Notifications | Verified provider failure, retry, competing dispatchers, abandoned claim recovery, exhausted failure/manual retry, ownership, and obsolete confirmation suppression |
+| Memory caching | Eleven new BDD examples passed: concurrent source-load coalescing, absolute expiry, failure recovery, invalidation during a fill, bypass, coherent policy refresh with accepted-offer preservation, shared catalogue isolation, and fresh vehicle ownership/category |
+| Cache HTTP smoke | The restarted API showed one miss/source load followed by one hit for both catalogue and quote-policy caches; counters are exposed through `/metrics` |
 | Observability | Six BDD scenarios passed: actual OTLP/HTTP logs/metrics/traces, request-to-booking-to-database-to-worker correlation, retry errors/recovery, stale forecast/freshness gauges, legacy events, collector 503 isolation, and unsampled trace propagation with metrics preserved |
 | Local viewers (26 October follow-up) | Docker Desktop ran `compose.telemetry.yaml`; Aspire received logs/traces/metrics, including a real booking and asynchronous delivery in one trace; Prometheus target was up and booking metrics were queryable; promtool validated the configuration and all eight rules |
 | Local migration and seed | Passed against `appointment_scheduler`, including the additive outbox trace-context migration |
@@ -26,6 +28,22 @@ Swagger UI follow-up, 26 October 2026: the API Release build passed with zero wa
 The rollback test deliberately emits a classified error log for PostgreSQL state 23514. That is the expected failure injection, not a failed test. The test and load databases are isolated, uniquely named, and removed by their runners. The application demonstration database remains available locally.
 
 BDD refactor verification originally passed 51 examples after splitting combined behaviors from the prior 31-case suite. At that stage application behavior and the recorded performance workload were unchanged. The subsequent Clean Architecture/DDD refactor added 23 domain, architecture, and migration checks. `dotnet test tests/Scheduler.Tests/Scheduler.Tests.csproj -c Release --no-restore` passed all 74 examples with none skipped on .NET runtime 10.0.13. The original integration scenarios continue to pass through the same HTTP contracts.
+
+## Post-caching short capacity run
+
+Date: 27 October 2026. The same synthetic workload ran after five seconds of warm-up for 60 seconds across two Kestrel processes on .NET 10.0.13. Each process used its own memory cache, with the default 300-second catalogue and 60-second policy lifetimes. Instrumentation and operational polling remained enabled; OTLP network export was disabled and logging was Warning. This does not measure Redis or attached-collector throughput.
+
+| Measurement | Result |
+| --- | --- |
+| Successful reads / distinct new bookings | 60,000 / 1,020 |
+| Failed read or booking requests / dropped arrivals | 0 / 0 |
+| Elapsed including response drain | 60.0080 seconds |
+| Read / booking throughput including drain | 999.87/s / 16.998/s |
+| Confirmation p50 / p95 / p99 | 6.89 / 9.37 / 10.71 ms |
+| Persisted overlapping reservations | 0 |
+| Notification backlog at final sample | 6 pending/processing items |
+
+All target arrivals completed. See [post-caching raw result](performance/memory-cache-60s.json). Query reduction is established by cache load/hit behavior; differences between local latency samples do not establish a performance improvement. A single queue sample does not establish queue stability. Sustained load, backend sizing, and production HA remain unvalidated.
 
 ## Post-observability short capacity run
 

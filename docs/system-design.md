@@ -10,7 +10,10 @@ flowchart LR
     API --> Quotes[Duration and pricing quotes]
     API --> Booking[Booking and cancellation]
     API --> Operations[Start progress and completion]
-    Quotes --> DB[(PostgreSQL)]
+    API -->|Shared catalogue| Cache[IMemoryCache reference and policy snapshots]
+    Quotes --> Cache
+    Cache -.->|Cache miss| DB[(PostgreSQL)]
+    Quotes --> DB
     Booking --> DB
     Operations --> DB
     DB --> Worker[Durable outbox worker]
@@ -79,7 +82,9 @@ flowchart LR
 
 This production topology is **not deployed**. The >=99.9% monthly uptime target allows 43 minutes 12 seconds downtime in a 30-day month. Independent synthetic booking journeys and production request telemetry must measure it; short tests cannot. Provision redundant load balancing, spare application capacity across zones, readiness/draining, coordinated compatible migrations, monitored database failover with fencing, backups, and restore exercises. Synchronous durable replication aims to retain acknowledged commits during a single-zone failure but can block writes when the required standby is unavailable. Automatic asynchronous fallback would alter the data-loss guarantee. Failover is not instantaneous; reconcile ambiguous booking responses by retrying the same quote.
 
-Adding API replicas does not scale the PostgreSQL writer automatically or create workshop capacity. Aggregate connection pools across maximum API/worker replicas must fit the database budget. Query/index tuning and database sizing precede any sharding. Cache versioned reference data or use stale-tolerant read replicas only when measurements justify them. Booking and immediate confirmation use the primary. Future deployment can isolate workers without changing their database contract. Arbitrarily high write scale would need further design work.
+Adding API replicas does not scale the PostgreSQL writer automatically or create workshop capacity. Aggregate connection pools across maximum API/worker replicas must fit the database budget. Query/index tuning and database sizing precede any sharding. The current Infrastructure adapter uses bounded `IMemoryCache` for shared catalogue data (five minutes) and coherent pricing/duration snapshots (one minute). Vehicle ownership/category and booking availability remain fresh database reads. Each API has an independent cache and can briefly observe different configuration versions within the TTL. Booking and immediate confirmation use the primary. Future deployment can isolate workers without changing their database contract. Arbitrarily high write scale would need further design work.
+
+Redis is planned for shared caching across replicas, with bounded TTLs, version-aware keys, post-commit invalidation, database fallback, and cache telemetry. Distributed caching does not replace PostgreSQL reservation constraints or locks. See [cache behavior and Redis improvement plan](caching.md). Redis and cross-process invalidation are not implemented.
 
 ## Observability and operational limits
 

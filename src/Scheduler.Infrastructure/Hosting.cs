@@ -16,6 +16,7 @@ public static class Hosting
         services.AddSingleton(_ => NpgsqlDataSource.Create(configuration.GetConnectionString("Scheduler")
             ?? throw new InvalidOperationException("Set ConnectionStrings__Scheduler or a .NET user secret. Never commit credentials.")));
         services.AddSingleton<Database>();
+        services.AddSingleton<ReferenceDataCache>();
         services.AddSingleton<ISchedulingStore, PostgresSchedulingStore>();
         services.AddSingleton<INotificationStore, PostgresNotificationStore>();
         services.AddSingleton<IReferenceDataReader, PostgresReferenceDataReader>();

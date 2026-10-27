@@ -20,13 +20,15 @@ Beyond the core brief, I considered workshop overruns, cancellation, notificatio
 
 “This diagram shows how a booking moves through the system.
 
-The web client calls the ASP.NET Core API. First, the quote component calculates the estimated duration, buffer, and configured price.
+The web client calls the API. Quotes calculate the duration, buffer, and configured price.
+
+Reference data and pricing/duration rules use memory caching with short expiry. Booking availability remains authoritative in PostgreSQL.
 
 When the customer confirms, the booking component allocates a qualified technician and a bay for the entire interval. PostgreSQL stores the appointment and enforces reservation constraints.
 
 The transaction also saves an outbox event. A background worker processes it asynchronously to create notifications, so confirmation does not depend on the delivery provider.
 
-The operations component handles work starting, progress updates, and completion. The API and worker emit logs, metrics, and traces for diagnosis.”
+Operations tracks workshop execution. The API and worker emit logs, metrics, and traces.”
 
 *Switch to the solution folders and point to each project as you name its responsibility.*
 
@@ -82,9 +84,9 @@ Additional staffing and customer-approved rescheduling are documented extensions
 
 **5:05–6:15 — Testing and observability**
 
-*Show the recorded 80-test result, a Given–When–Then scenario, `Observability.cs`, and a metrics response or correlated log.*
+*Show the recorded 91-test result, a Given–When–Then scenario, `Observability.cs`, and a metrics response or correlated log.*
 
-“The current suite has eighty passing examples. Tests use Given–When–Then scenarios with Fluent Assertions.
+“The current suite has ninety-one passing examples. Tests use Given–When–Then scenarios with Fluent Assertions.
 
 The integration tests use real PostgreSQL. They cover competing bookings, replay, cancellation races, notification retries, and transaction rollback when writing the outbox fails. Architecture tests also enforce dependency direction.
 
@@ -98,11 +100,11 @@ The local Aspire and Prometheus dashboards have also been verified with a real b
 
 **6:15–7:00 — Performance evidence and scaling**
 
-*Show the post-observability results in `docs/validation.md`.*
+*Show the post-caching short-run results in `docs/validation.md`.*
 
 “I also set a target of one thousand reads and seventeen new bookings per second, with booking confirmation within two to three seconds.
 
-In the recorded sixty-second local test, two API processes completed sixty thousand reads and one thousand and twenty new bookings. There were no failed requests, dropped arrivals, or overlapping reservations. Booking p99 was about ten milliseconds.
+In the recorded sixty-second local test, two API processes completed sixty thousand reads and one thousand and twenty new bookings. There were no failed requests, dropped arrivals, or overlapping reservations. Booking p99 was about eleven milliseconds.
 
 That is a short synthetic result. OTLP export was disabled and logging was set to Warning. It does not prove production capacity or 99.9 percent uptime.
 
@@ -146,7 +148,7 @@ Working with AI also reinforced the value of specific review questions. Challeng
 
 “SQL requires mapping maintenance, and notification delivery must handle duplicates.
 
-Next steps are production authentication, payment and messaging integrations, consent-based recovery, sustained load testing, and database failover testing.
+Redis is a future option for shared caching across instances. Other next steps include production integrations, consent-based recovery, sustained load testing, and failover testing.
 
 Thank you for reviewing my solution.”
 

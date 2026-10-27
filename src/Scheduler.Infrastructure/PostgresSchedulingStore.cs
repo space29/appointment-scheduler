@@ -4,32 +4,63 @@ using Scheduler.Domain;
 
 namespace Scheduler.Infrastructure;
 
-public sealed class PostgresSchedulingStore(Database database) : ISchedulingStore
+public sealed class PostgresSchedulingStore(Database database, ReferenceDataCache cache) : ISchedulingStore
 {
-    public async Task<ISchedulingSession> Open(CancellationToken ct) => new PostgresSchedulingSession(await database.Open(ct));
+    public async Task<ISchedulingSession> Open(CancellationToken ct) => new PostgresSchedulingSession(await database.Open(ct), cache, ct);
 }
 
-internal sealed class PostgresSchedulingSession(Session s) : ISchedulingSession
+internal sealed class PostgresSchedulingSession(Session s, ReferenceDataCache cache, CancellationToken ct) : ISchedulingSession
 {
+    private QuotePolicy? quotedPolicy;
     public Task Begin() => s.Begin();
     public Task Commit() => s.Commit();
     public ValueTask DisposeAsync() => s.DisposeAsync();
     public Task LockResources(Guid[] ids) => s.LockResources(ids);
 
-    public Task<QuoteInputs?> QuoteInputs(QuoteRequest request) => s.One<QuoteInputs>("""
-        SELECT COALESCE(dr.estimated_minutes,st.baseline_minutes) estimated_minutes,
-        COALESCE(dr.buffer_minutes,0) buffer_minutes,COALESCE(dr.version,0) duration_version,
-        p.id policy_id,p.base_price,p.currency,p.version price_version,d.time_zone
-        FROM vehicle v JOIN service_type st ON st.id=@ServiceTypeId
+    public async Task<QuoteInputs?> QuoteInputs(QuoteRequest request)
+    {
+        // Never let a warm policy cache replace current vehicle ownership/category validation.
+        var category = await s.One<string>("SELECT category FROM vehicle WHERE id=@VehicleId AND customer_id=@CustomerId", request);
+        if (category == null) return null;
+        quotedPolicy = await cache.Get<QuotePolicy>(ReferenceCacheRegion.QuotePolicy,
+            (request.DealershipId, request.ServiceTypeId), async () =>
+            {
+                var row = await s.One<QuotePolicy.Row>("""
+        SELECT p.id policy_id,p.base_price,p.currency,p.version price_version,d.time_zone,st.baseline_minutes,
+          COALESCE((SELECT jsonb_agg(jsonb_build_object('Category',r.category,'EstimatedMinutes',r.estimated_minutes,
+            'BufferMinutes',r.buffer_minutes,'Version',r.version)) FROM duration_rule r WHERE r.service_type_id=st.id),'[]'::jsonb)::text duration_rules,
+          COALESCE((SELECT jsonb_agg(jsonb_build_object('Name',b.name,'Weekday',b.weekday,'StartMinute',b.start_minute,
+            'EndMinute',b.end_minute,'Multiplier',b.multiplier)) FROM price_band b WHERE b.policy_id=p.id),'[]'::jsonb)::text price_bands
+        FROM price_policy p JOIN service_type st ON st.id=p.service_type_id
         JOIN dealership d ON d.id=@DealershipId
-        JOIN price_policy p ON p.dealership_id=d.id AND p.service_type_id=st.id
-        LEFT JOIN duration_rule dr ON dr.service_type_id=st.id AND dr.category=v.category
-        WHERE v.id=@VehicleId AND v.customer_id=@CustomerId
+        WHERE p.dealership_id=d.id AND p.service_type_id=@ServiceTypeId
         """, request);
-    public Task<PriceBand?> PriceBand(Guid policyId, int weekday, int minute) => s.One<PriceBand>("""
+                return row?.Snapshot();
+            }, ct);
+        if (quotedPolicy == null) return null;
+        var duration = quotedPolicy.Durations.SingleOrDefault(r => r.Category == category);
+        return new QuoteInputs
+        {
+            EstimatedMinutes = duration?.EstimatedMinutes ?? quotedPolicy.BaselineMinutes,
+            BufferMinutes = duration?.BufferMinutes ?? 0,
+            DurationVersion = duration?.Version ?? 0,
+            PolicyId = quotedPolicy.Id, BasePrice = quotedPolicy.BasePrice, Currency = quotedPolicy.Currency,
+            PriceVersion = quotedPolicy.Version, TimeZone = quotedPolicy.TimeZone
+        };
+    }
+    public Task<PriceBand?> PriceBand(Guid policyId, int weekday, int minute)
+    {
+        // Use the same snapshot throughout quote issuance, even if the cache expires between calls.
+        if (quotedPolicy?.Id == policyId)
+        {
+            var band = quotedPolicy.Bands.SingleOrDefault(b => b.Weekday == weekday && b.StartMinute <= minute && b.EndMinute > minute);
+            return Task.FromResult(band == null ? null : new PriceBand(band.Name, band.Multiplier));
+        }
+        return s.One<PriceBand>("""
         SELECT name,multiplier FROM price_band WHERE policy_id=@policyId AND weekday=@weekday
         AND start_minute<=@minute AND end_minute>@minute
         """, new { policyId, weekday, minute });
+    }
     public async Task AddQuote(QuoteSnapshot q) => await s.Exec("""
         INSERT INTO appointment_quote(id,customer_id,vehicle_id,dealership_id,service_type_id,starts_at,ends_at,
         estimated_minutes,buffer_minutes,duration_version,base_price,multiplier,band,total,currency,price_version,created_at,expires_at)

@@ -62,6 +62,7 @@ The standalone dashboard containers have now been run and verified: Aspire repor
 | `scheduler.booking.contention` | Counter of caught PostgreSQL contention failures, `code` |
 | `scheduler.notification.outcomes` | Counter of delivery handling outcomes, including Pending, Failed, ProviderAccepted, Suppressed |
 | `scheduler.database.duration` | Milliseconds histogram, bounded operation/outcome labels |
+| `scheduler.cache.requests` / `scheduler.cache.loads` | Cache hit/miss/bypass and actual source-load counters; bounded cache/outcome labels |
 | `scheduler.outbox.pending` / `scheduler.outbox.oldest.age` | Unmaterialized event count / oldest age in seconds |
 | `scheduler.notification.pending` / `scheduler.notification.failed` | Pending-or-processing / exhausted delivery counts |
 | `scheduler.execution.stale` / `scheduler.incident.open` | Unfinished expired forecasts / unresolved incidents |

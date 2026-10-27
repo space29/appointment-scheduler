@@ -89,13 +89,18 @@ public sealed class DatabaseFixture : IAsyncLifetime
             TRUNCATE notification_delivery,outbox_message,execution_report,disruption_incident,resource_usage,
             job_execution,resource_reservation,appointment,appointment_quote;
             UPDATE price_policy SET base_price=100,version=1;
+            UPDATE price_band SET multiplier=CASE name WHEN 'Peak' THEN 1.20 WHEN 'OffPeak' THEN 0.90 ELSE multiplier END;
             UPDATE duration_rule SET estimated_minutes=CASE category WHEN 'Large' THEN 75 ELSE 60 END,buffer_minutes=10,version=1;
-            UPDATE vehicle SET category='Large' WHERE id='20000000-0000-0000-0000-000000000002';
+            UPDATE service_type SET name='Inspection',baseline_minutes=60;
+            UPDATE vehicle SET category='Standard',customer_id='10000000-0000-0000-0000-000000000001' WHERE id='20000000-0000-0000-0000-000000000001';
+            UPDATE vehicle SET category='Large',customer_id='10000000-0000-0000-0000-000000000002' WHERE id='20000000-0000-0000-0000-000000000002';
             DELETE FROM qualification;
             INSERT INTO qualification SELECT id,'40000000-0000-0000-0000-000000000001' FROM resource WHERE name LIKE 'Qualified%';
             DELETE FROM availability;
             INSERT INTO availability SELECT gen_random_uuid(),id,@start,@end FROM resource;
             """, new { start = Baseline.UtcDateTime, end = Baseline.AddHours(10).UtcDateTime });
+        First.Services.GetRequiredService<ReferenceDataCache>().InvalidateAll();
+        Second.Services.GetRequiredService<ReferenceDataCache>().InvalidateAll();
     }
 
     public HttpClient Client(string actor = "customer-a", bool second = false)

@@ -11,6 +11,7 @@ Scenario A of the Keyloop assessment: a .NET 10 backend that quotes a vehicle se
 - Durable notification outbox, inbox, mock delivery provider, competing workers, leases, retry/backoff, failed-delivery inspection/retry, and suppression of unsent confirmations after cancellation.
 - PostgreSQL integration tests across two API hosts, correlated JSON logs, OpenTelemetry export, Prometheus metrics, health endpoints, and an isolated load runner.
 - Booking-to-notification traces across the durable outbox, database timing, operational gauges, and optional local Aspire/Prometheus viewing with alert rules.
+- Bounded `IMemoryCache` for shared reference data and pricing/duration policy snapshots, with absolute expiry, coalesced loads, and cache telemetry.
 
 ## Clean Architecture and domain model
 
@@ -70,6 +71,10 @@ JSON console logs and `GET /metrics` are enabled by default. Responses expose `X
 
 For the API/PostgreSQL already running on the host, `docker compose -f compose.telemetry.yaml up -d` starts Aspire at localhost:18888 and Prometheus at localhost:9090. This setup has been verified with real logs, traces, metrics, and a healthy scrape target. Configure the API's OTLP endpoint and Docker host allowlist as shown in the [observability walkthrough](docs/observability.md). For the separate full-stack deployment, the override remains `docker compose -f compose.yaml -f compose.observability.yaml up --build`.
 
+## Caching
+
+Shared dealership/service data is cached for five minutes; pricing, time bands, and duration rules are cached together for one minute. Vehicle ownership/category and booking availability remain PostgreSQL reads. Each process has its own cache; direct configuration updates become visible after expiry or explicit local invalidation. Redis is a future shared-cache option for multiple replicas. See [cache behavior, configuration, and Redis plan](docs/caching.md).
+
 ## Test
 
 Tests create and remove their own uniquely named `scheduler_test_<GUID>` database. Set an administration connection with CREATEDB and extension permissions; never point tests at a production server.
@@ -81,12 +86,12 @@ dotnet test -c Release
 
 Database tests fail with setup instructions if this variable is missing; they are not silently skipped. The suite verifies real PostgreSQL semantics, including bay-only and technician-only conflicts, independent API instances, last-slot races, same-quote replay, atomic rollback when outbox insertion fails, cancellation/start races, both booking/forecast commit orders, actual overruns, expired worker claims, and provider recovery. See [validation results](docs/validation.md) for the recorded run.
 
-Tests follow **Given–When–Then** scenarios using xUnit and Fluent Assertions 7.2.0. Names describe the precondition, business action, and expected outcome. Each test separates those phases explicitly; related outcomes use `AssertionScope`, and scenario outlines use theories. The suite currently has **80 passing examples**: 24 domain/rule examples, four architecture checks, and 52 PostgreSQL/API/observability scenarios. See the [testing convention](docs/testing.md) before adding tests.
+Tests follow **Given–When–Then** scenarios using xUnit and Fluent Assertions 7.2.0. Names describe the precondition, business action, and expected outcome. Each test separates those phases explicitly; related outcomes use `AssertionScope`, and scenario outlines use theories. The suite currently has **91 passing examples**: 24 domain/rule examples, six cache unit examples, four architecture checks, and 57 PostgreSQL/API/observability/cache integration scenarios. See the [testing convention](docs/testing.md) before adding tests.
 
-Domain and architecture tests run without a database connection:
+Domain, cache unit, and architecture tests run without a database connection:
 
 ```powershell
-dotnet test --filter 'FullyQualifiedName~DomainScenarios|FullyQualifiedName~RulesTests|FullyQualifiedName~ArchitectureScenarios'
+dotnet test --filter 'FullyQualifiedName~DomainScenarios|FullyQualifiedName~RulesTests|FullyQualifiedName~ArchitectureScenarios|FullyQualifiedName~MemoryCacheScenarios'
 ```
 
 ## Performance
@@ -125,5 +130,7 @@ During implementation review, the applicant requested BDD-style tests and Fluent
 The applicant then challenged the lack of Clean Architecture and DDD. AI separated four production projects, moved lifecycle behavior into the appointment aggregate and its execution entity, introduced value objects and typed domain events, and implemented application-owned persistence interfaces in Infrastructure. The original 51 scenarios still pass, with 23 additional domain, architecture, and migration checks. Dependency tests prevent inward layers from importing HTTP or database adapters. Migration resource identities were deliberately retained to avoid rerunning the schema on existing databases. A new architecture-test assertion initially failed compilation because expression trees do not support its pattern syntax; the assertion was corrected before the full suite passed.
 
 The applicant then identified that logs, activities, and meters alone did not complete observability. AI added the SDK/exporters, JSON correlation, metrics scraping, persisted asynchronous trace context, database spans, operational snapshots, and optional local viewers. Six BDD scenarios verified actual three-signal HTTP export, cross-worker parentage, retries, stale forecasts, legacy events, collector failure isolation, and sampling. The tests caught late collector configuration in the test host and a mistaken assumption that the Prometheus pull reader could be force-flushed; both were corrected before all 80 examples passed. After the applicant installed Docker Desktop, the local Aspire/Prometheus setup was verified with a real booking and notification trace, exported logs, and scraped metrics. Performance evidence still separates instrumentation from attached-collector throughput.
+
+The applicant also requested `IMemoryCache` for reference/pricing/duration data and a Redis improvement plan. Infrastructure now caches shared catalogue data and coherent quote-policy snapshots while rechecking vehicle ownership/category and keeping resource allocation in PostgreSQL. Eleven new BDD examples verify expiry, concurrent fills, invalidation, failure recovery, and isolation. All 91 examples passed, and the repeated short target-rate workload completed without failures or overlaps. Cache telemetry verifies source-load reuse; the result is not presented as a measured latency improvement or a Redis implementation.
 
 The applicant still needs to review and explain the code and tradeoffs, run the demonstration, and record their own assessment video. This narrative records actual collaboration and verification; it does not claim the applicant has already reviewed every generated implementation detail. Design-phase collaboration is separately covered in [system design](docs/system-design.md).
