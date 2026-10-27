@@ -56,6 +56,8 @@ The quote identifier also makes confirmation idempotent. If the server commits b
 
 *Show prepared API requests and responses. Pause briefly at each result.*
 
+*Use the endpoint cue cards at the end of this document when explaining a specific Swagger operation. They are presenter reference notes; choose the lines relevant to the demonstration within this time slot.*
+
 “Here I request a quote for a vehicle, service, dealership, and start time.
 
 The response includes the work estimate, buffer, and accepted price. These values are captured in the quote, so a later pricing configuration change does not silently change a valid offer.
@@ -153,3 +155,41 @@ Redis is a future option for shared caching across instances. Other next steps i
 Thank you for reviewing my solution.”
 
 If rehearsal runs long, shorten the project-folder explanation and the list of metrics. Keep the booking demonstration, concurrency explanation, explicit implementation limits, the 1–2 minute AI collaboration section, and the reflection on learning and challenges. The timestamps are rehearsal targets; adjust the pace after a timed practice run.
+
+**Presenter reference — what each endpoint does**
+
+These are ready-to-say explanations for every exposed API operation and the documentation pages. Use them when pointing to an endpoint in Swagger. This reference is outside the timed narration. Customer requests use `customer-a` or `customer-b`; workshop operations use `staff` in Swagger's Authorize dialog.
+
+| Endpoint | What to say | Caller |
+| --- | --- | --- |
+| `GET /reference-data` | “This endpoint supplies the reference data needed to prepare a booking, including the caller's vehicles, available service types, dealerships, and supported payment option.” | Customer or staff |
+| `POST /appointment-quotes` | “This endpoint creates a temporary offer containing the service estimate, buffer, and price, so the customer can review the terms before booking.” | Customer or staff |
+| `POST /appointments` | “This endpoint confirms a quote and reserves a qualified technician and a bay for the entire appointment interval.” | Customer or staff |
+| `GET /appointments/{id}` | “This endpoint retrieves the saved appointment, its allocated resources, its work execution if started, and whether it is at risk.” | Owning customer or dealership staff |
+| `POST /appointments/{id}/cancel` | “This endpoint cancels a confirmed appointment before work starts, releases its planned capacity, and preserves its history.” | Owning customer or dealership staff |
+| `POST /appointments/{id}/start` | “This endpoint records that the workshop has actually started servicing the vehicle.” | Staff |
+| `PATCH /appointments/{id}/progress` | “This endpoint records a revised expected completion time and checks whether the work affects other appointments.” | Staff |
+| `POST /appointments/{id}/complete` | “This endpoint records that servicing has finished, saves the actual completion time, and releases the resources' actual occupancy.” | Staff |
+| `GET /appointments/{id}/impacts` | “This endpoint shows disruption incidents caused by or affecting the appointment, and whether its completion forecast is stale.” | Staff |
+| `GET /me/notifications` | “This endpoint returns the current user's notification inbox, including booking confirmations, cancellations, and relevant operational updates.” | Customer or staff, own inbox |
+| `POST /me/notifications/{id}/read` | “This endpoint records that the recipient has marked a notification as read.” | Notification recipient |
+| `GET /appointments/{id}/notification-deliveries` | “This endpoint lets staff inspect notification delivery attempts, statuses, and recorded errors for an appointment.” | Staff |
+| `POST /notification-deliveries/{id}/retry` | “This endpoint queues a failed notification delivery for another attempt after the underlying problem has been addressed.” | Staff |
+| `GET /health/live` | “This endpoint confirms that the API process is responding.” | No demo identity required |
+| `GET /health/ready` | “This endpoint checks that the API can query PostgreSQL, helping determine whether it is ready to serve requests.” | No demo identity required |
+| `GET /metrics` | “This endpoint exposes application and runtime measurements for Prometheus to scrape.” | No demo identity required |
+| `GET /openapi/v1.json` | “This endpoint provides the machine-readable API contract used by Swagger UI and other API tools.” | No demo identity required |
+| `GET /swagger` | “This page lets me explore the API and execute requests interactively using a selected demo identity.” | No identity needed to open the page; business requests require authorization |
+
+**Details to explain when demonstrating a route**
+
+- A quote lasts ten minutes and holds no resources. Confirmation rechecks availability. A new confirmation returns 201; retrying the same quote returns the same appointment with 200. Confirming records the PayAtCheckIn arrangement, not a payment receipt.
+- Starting moves the appointment from Confirmed to InProgress, records the server's actual start time, and creates its work execution. The assigned resources must be free of active work/unresolved impacts, and the remaining reservation must fit the estimated work. Use an appointment in its valid start window; a future appointment cannot be started immediately.
+- Start and cancel use the **appointment** revision in `expectedRevision`. Progress and complete use the **execution** revision. Read the latest appointment response to obtain the right revision before changing it.
+- Progress requires `expectedCompletion` with an explicit offset and a reason. It updates the forecast and records impacts; it does not automatically move another customer's appointment.
+- Completion releases actual occupancy. The original scheduled reservation remains until its end. Completion also reevaluates downstream impacts, which can remain unresolved if the following appointment no longer has enough time.
+- Notification delivery is asynchronous. ProviderAccepted is distinct from delivery/read status, and marking a notification read is separate from consenting to a schedule change. Manual retry applies to Failed deliveries and returns 202 to acknowledge the retry request.
+
+**Choose the demonstration flow**
+
+For the timed video, use the existing quote → confirm → retry → read → cancel → inbox sequence. To explain workshop execution, use a **different appointment** and show start → progress → impacts → complete. An appointment cancelled in the first sequence cannot then be started. If the booking is outside its valid start window, show the operational test scenario while explaining these routes. The API uses the real server clock.
